@@ -14,6 +14,10 @@ import {
   KitchenBuilder,
 } from '../../src/house/rooms/Kitchen.js';
 import { UtilityRoomBuilder } from '../../src/house/rooms/UtilityRoom.js';
+import { BathroomsBuilder } from '../../src/house/rooms/Bathrooms.js';
+import { CommonAreasBuilder } from '../../src/house/rooms/CommonAreas.js';
+import { createTreesAndProps, TREE_SPECS } from '../../src/world/TreesAndProps.js';
+import { Experience } from '../../src/app/Experience.js';
 import { gameStore } from '../../src/state/gameStore.js';
 
 describe('Tier 5: Adversarial Interaction, Audio, State & Particle Stress Testing', () => {
@@ -705,6 +709,90 @@ describe('Tier 5: Adversarial Interaction, Audio, State & Particle Stress Testin
         expect(current.washerRunning).toBe(expectedWasher);
         expect(current.dryerRunning).toBe(expectedDryer);
       }
+    });
+  });
+
+  // =========================================================================
+  // SUITE 7: Startup Async Scheduling, Material Normal/Bump Hygiene & Foliage
+  // =========================================================================
+  describe('Suite 7: Startup Async Scheduling, Normal/Bump Hygiene & Foliage', () => {
+    it('defers initial render frame via requestAnimationFrame in Experience.start()', () => {
+      const origRaf = globalThis.requestAnimationFrame;
+      const queued = [];
+      globalThis.requestAnimationFrame = (fn) => {
+        queued.push(fn);
+        return queued.length;
+      };
+      let loopCalledSynchronously = false;
+      try {
+        const fakeExp = {
+          running: false,
+          rafId: null,
+          clock: { started: false, start() { this.started = true; } },
+          _loop() { loopCalledSynchronously = true; },
+        };
+        Experience.prototype.start.call(fakeExp);
+        expect(fakeExp.running).toBe(true);
+        expect(fakeExp.clock.started).toBe(true);
+        expect(loopCalledSynchronously).toBe(false);
+        expect(queued.length).toBe(1);
+        expect(fakeExp.rafId).toBe(1);
+      } finally {
+        globalThis.requestAnimationFrame = origRaf;
+      }
+    });
+
+    it('avoids combining bumpMap with normalMap in house shell, bath, kitchen, laundry, and common-area materials', () => {
+      const houseMats = new HouseMeshBuilder().materials;
+      const bathMats = new BathroomsBuilder().materials;
+      const kitchenMats = new KitchenBuilder().materials;
+      const laundryMats = new UtilityRoomBuilder().materials;
+      const commonMats = new CommonAreasBuilder().materials;
+
+      const sets = [
+        houseMats,
+        houseMats.floors,
+        bathMats,
+        kitchenMats,
+        laundryMats,
+        commonMats,
+      ];
+      for (const bag of sets) {
+        for (const mat of Object.values(bag)) {
+          if (mat && mat.isMaterial && mat.normalMap) {
+            expect(mat.bumpMap ?? null).toBeNull();
+          }
+        }
+      }
+    });
+
+    it('builds all 10 botanical trees with trunk + bench colliders and compact blossom crowns', () => {
+      const props = createTreesAndProps();
+      expect(props.trees.length).toBe(10);
+      expect(props.colliders.length).toBe(14);
+      expect(props.colliders.filter((c) => c.type === 'cylinder').length).toBe(10);
+      expect(props.colliders.filter((c) => c.type === 'box').length).toBe(4);
+      expect(props.benches.length).toBe(4);
+      expect(props.pathLights.length).toBe(10);
+
+      // Verify flowering tree blossom crowns remain tucked tightly inside crown radius
+      props.trees.forEach((tree, idx) => {
+        const spec = TREE_SPECS[idx];
+        const crown = tree.userData?.crown;
+        expect(crown).toBeDefined();
+        if (spec.blossomColor) {
+          expect(crown.children.length).toBe(3);
+          const blossomMesh = crown.children[0];
+          const pos = blossomMesh.geometry.attributes.position;
+          expect(pos.count).toBeGreaterThan(0);
+          for (let i = 0; i < pos.count; i++) {
+            const r = Math.hypot(pos.getX(i), pos.getZ(i));
+            expect(r).toBeLessThanOrEqual(spec.crownRadius * 0.9);
+          }
+        } else {
+          expect(crown.children.length).toBe(2);
+        }
+      });
     });
   });
 });
