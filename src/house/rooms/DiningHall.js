@@ -3,7 +3,13 @@ import {
   getTimberTextures,
   getFabricTextures,
   getArtworkTexture,
+  getRugTextures,
+  getStoneTileTextures,
 } from '../../assets/procedural/TextureGenerator.js';
+import {
+  createChamferedBoxGeo,
+  createLatheGeo,
+} from './RoomProps.js';
 
 /**
  * DiningHallBuilder: Furnishes the Secondary Dining & Family Hall (PRD §10.3, Feature F23).
@@ -70,6 +76,26 @@ export class DiningHallBuilder {
         color: 0xf3ede2,
         roughness: 0.35,
       }),
+      stoneTop: new THREE.MeshStandardMaterial({
+        map: getStoneTileTextures('limestone', 2, 1).map,
+        roughness: 0.42,
+      }),
+      clearGlass: new THREE.MeshPhysicalMaterial({
+        color: 0xf4f9fc,
+        transmission: 0.9,
+        transparent: true,
+        opacity: 1,
+        roughness: 0.06,
+        ior: 1.5,
+      }),
+      linenPlace: new THREE.MeshStandardMaterial({
+        color: 0xd9cdb8,
+        roughness: 0.9,
+      }),
+      oliveSprig: new THREE.MeshStandardMaterial({
+        color: 0x4b6a42,
+        roughness: 0.78,
+      }),
       glassPendant: new THREE.MeshStandardMaterial({
         color: 0xffffff,
         emissive: 0xffeedd,
@@ -81,8 +107,8 @@ export class DiningHallBuilder {
 
   build() {
     const floorY = 0.3; // Dining hall datum
-    const cx = -9.25; // center X of dining room (-11.75 to -6.75)
-    const cz = 2.3; // center Z of dining room (0.2 to 4.4)
+    const cx = -8.75; // Shifted slightly East to allow wide clearance by West sideboard
+    const cz = 2.3; // Center Z of dining room (0.2 to 4.4)
 
     this.buildAreaRug(cx, floorY, cz);
     this.buildDiningTableAndChairs(cx, floorY, cz);
@@ -101,17 +127,18 @@ export class DiningHallBuilder {
   }
 
   buildAreaRug(cx, floorY, cz) {
-    const rugTex = getFabricTextures('#D6CABA', 4, 3);
-    const rugGeo = new THREE.PlaneGeometry(3.6, 2.2);
+    const rugTex = getRugTextures('gallery', 1, 1);
+    const rugGeo = new THREE.PlaneGeometry(3.75, 2.35);
     rugGeo.rotateX(-Math.PI / 2);
     const rugMat = new THREE.MeshStandardMaterial({
       map: rugTex.map,
-      bumpMap: rugTex.bumpMap,
-      bumpScale: 0.04,
-      roughness: 0.92,
+      normalMap: rugTex.normalMap,
+      normalScale: new THREE.Vector2(0.7, 0.7),
+      roughnessMap: rugTex.roughnessMap,
+      roughness: 0.94,
     });
     const rug = new THREE.Mesh(rugGeo, rugMat);
-    rug.position.set(cx, floorY + 0.003, cz);
+    rug.position.set(cx, floorY + 0.004, cz);
     rug.receiveShadow = true;
     this.group.add(rug);
   }
@@ -126,9 +153,9 @@ export class DiningHallBuilder {
     const tH = 0.76;
     const topThick = 0.045;
 
-    // Solid sandalwood tabletop
+    // Beveled solid sandalwood tabletop + recessed apron
     const topMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(tL, topThick, tW),
+      createChamferedBoxGeo(tL, topThick, tW, 0.05),
       this.materials.tableWood
     );
     topMesh.position.set(0, tH - topThick * 0.5, 0);
@@ -136,26 +163,81 @@ export class DiningHallBuilder {
     topMesh.receiveShadow = true;
     setGroup.add(topMesh);
 
-    // Trestle legs / structural posts at each end
-    const legGeo = new THREE.BoxGeometry(0.1, tH - topThick, tW - 0.2);
-    const legLeft = new THREE.Mesh(legGeo, this.materials.tableWood);
-    legLeft.position.set(-tL * 0.5 + 0.35, (tH - topThick) * 0.5, 0);
-    legLeft.castShadow = true;
-    setGroup.add(legLeft);
+    const apron = new THREE.Mesh(
+      new THREE.BoxGeometry(tL - 0.36, 0.06, tW - 0.24),
+      this.materials.chairLegs
+    );
+    apron.position.set(0, tH - topThick - 0.03, 0);
+    setGroup.add(apron);
 
-    const legRight = new THREE.Mesh(legGeo, this.materials.tableWood);
-    legRight.position.set(tL * 0.5 - 0.35, (tH - topThick) * 0.5, 0);
-    legRight.castShadow = true;
-    setGroup.add(legRight);
+    // Fluted architectural double pedestals & stretcher beam
+    for (const px of [-tL * 0.5 + 0.45, tL * 0.5 - 0.45]) {
+      const col = new THREE.Mesh(
+        createChamferedBoxGeo(0.14, tH - topThick - 0.06, tW - 0.34, 0.03),
+        this.materials.tableWood
+      );
+      col.position.set(px, (tH - topThick) * 0.5, 0);
+      col.castShadow = true;
+      setGroup.add(col);
 
-    // Center table centerpiece: ceramic bowl and dried floral sprig
+      const foot = new THREE.Mesh(
+        createChamferedBoxGeo(0.24, 0.05, tW - 0.2, 0.02),
+        this.materials.chairLegs
+      );
+      foot.position.set(px, 0.025, 0);
+      setGroup.add(foot);
+    }
+    const stretcher = new THREE.Mesh(new THREE.BoxGeometry(tL - 0.9, 0.05, 0.08), this.materials.chairLegs);
+    stretcher.position.set(0, 0.16, 0);
+    setGroup.add(stretcher);
+
+    // Center table floral vessel & olive branches
     const centerBowl = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.1, 0.07, 16),
+      createLatheGeo([[0.09, 0], [0.16, 0.035], [0.19, 0.085], [0.16, 0.085]], 18),
       this.materials.ceramicWhite
     );
-    centerBowl.position.set(0, tH + 0.035, 0);
+    centerBowl.position.set(0, tH, 0);
     centerBowl.castShadow = true;
     setGroup.add(centerBowl);
+
+    for (let s = 0; s < 5; s++) {
+      const ang = (s / 5) * Math.PI * 2;
+      const sprig = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.005, 0.24, 6), this.materials.oliveSprig);
+      sprig.position.set(Math.cos(ang) * 0.06, tH + 0.12, Math.sin(ang) * 0.06);
+      sprig.rotation.z = Math.cos(ang) * 0.55;
+      sprig.rotation.x = Math.sin(ang) * 0.55;
+      setGroup.add(sprig);
+    }
+
+    // Complete 8 place settings on tabletop (woven placemats, porcelain plates, steel flatware, crystal goblets)
+    const addPlaceSetting = (px, pz, facingZ) => {
+      const mat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.004, 0.3), this.materials.linenPlace);
+      mat.position.set(px, tH + 0.002, pz);
+      setGroup.add(mat);
+
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.105, 0.014, 16), this.materials.ceramicWhite);
+      plate.position.set(px, tH + 0.011, pz);
+      plate.castShadow = true;
+      setGroup.add(plate);
+
+      const goblet = new THREE.Mesh(
+        createLatheGeo([[0.032, 0], [0.005, 0.006], [0.005, 0.075], [0.042, 0.115], [0.038, 0.165]], 12),
+        this.materials.clearGlass
+      );
+      goblet.position.set(px + 0.14 * facingZ, tH, pz - 0.11 * facingZ);
+      setGroup.add(goblet);
+
+      const knife = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.005, 0.2), this.materials.brassMetal);
+      knife.position.set(px + 0.16 * facingZ, tH + 0.006, pz);
+      setGroup.add(knife);
+    };
+    const chairOffsetsX = [-0.85, 0.0, 0.85];
+    for (const ox of chairOffsetsX) {
+      addPlaceSetting(ox, tW * 0.5 - 0.2, 1);
+      addPlaceSetting(ox, -tW * 0.5 + 0.2, -1);
+    }
+    addPlaceSetting(-tL * 0.5 + 0.22, 0, 1);
+    addPlaceSetting(tL * 0.5 - 0.22, 0, -1);
 
     // 2. 8 Upholstered dining chairs: seat height 0.45m, back height 0.85m
     const seatH = 0.45;
@@ -164,7 +246,6 @@ export class DiningHallBuilder {
     const chairD = 0.48;
 
     // 3 chairs on south side (facing north)
-    const chairOffsetsX = [-0.85, 0.0, 0.85];
     for (let i = 0; i < 3; i++) {
       const chair = this.createDiningChair(chairW, chairD, seatH, backH);
       chair.position.set(chairOffsetsX[i], 0, tW * 0.5 + 0.25);
@@ -242,27 +323,35 @@ export class DiningHallBuilder {
   createDiningChair(w, d, seatH, backH) {
     const chairGroup = new THREE.Group();
 
-    // Upholstered seat cushion
+    // Beveled upholstered seat cushion
     const seatMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, 0.08, d),
+      createChamferedBoxGeo(w, 0.075, d, 0.03),
       this.materials.chairUpholstery
     );
-    seatMesh.position.set(0, seatH - 0.04, 0);
+    seatMesh.position.set(0, seatH - 0.038, 0);
     seatMesh.castShadow = true;
     chairGroup.add(seatMesh);
 
-    // Upholstered gently curved backrest (total height backH = 0.85m)
+    // Sculpted gently reclined chamfered backrest (total height backH = 0.85m)
     const backrestH = backH - seatH;
     const backMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(w, backrestH, 0.06),
+      createChamferedBoxGeo(w - 0.02, backrestH, 0.055, 0.02),
       this.materials.chairUpholstery
     );
     backMesh.position.set(0, seatH + backrestH * 0.5, d * 0.5 - 0.03);
+    backMesh.rotation.x = 0.07;
     backMesh.castShadow = true;
     chairGroup.add(backMesh);
 
-    // 4 Dark walnut tapered legs
-    const legGeo = new THREE.CylinderGeometry(0.016, 0.012, seatH - 0.08, 8);
+    // Walnut timber back stile surround + 4 tapered legs
+    const rail = new THREE.Mesh(
+      createChamferedBoxGeo(w, 0.04, 0.06, 0.015),
+      this.materials.chairLegs
+    );
+    rail.position.set(0, seatH - 0.08, d * 0.5 - 0.03);
+    chairGroup.add(rail);
+
+    const legGeo = new THREE.CylinderGeometry(0.017, 0.011, seatH - 0.075, 8);
     const legOffsets = [
       [-w * 0.5 + 0.04, -d * 0.5 + 0.04],
       [w * 0.5 - 0.04, -d * 0.5 + 0.04],
@@ -271,7 +360,7 @@ export class DiningHallBuilder {
     ];
     for (const [lx, lz] of legOffsets) {
       const leg = new THREE.Mesh(legGeo, this.materials.chairLegs);
-      leg.position.set(lx, (seatH - 0.08) * 0.5, lz);
+      leg.position.set(lx, (seatH - 0.075) * 0.5, lz);
       leg.castShadow = true;
       chairGroup.add(leg);
     }
@@ -283,46 +372,70 @@ export class DiningHallBuilder {
     const sbGroup = new THREE.Group();
     sbGroup.name = 'dining-sideboard';
 
-    // Spec: 1.80m L x 0.50m W x 0.85m H
+    // Spec: 1.80m L x 0.50m W x 0.85m H tucked flush along West wall beneath win-dining-west (sill Y=1.15m)
     const sbL = 1.8;
     const sbW = 0.5;
     const sbH = 0.85;
 
     const sbBody = new THREE.Mesh(
-      new THREE.BoxGeometry(sbL, sbH, sbW),
+      createChamferedBoxGeo(sbL, sbH - 0.14, sbW, 0.025),
       this.materials.sideboardWood
     );
-    sbBody.position.set(0, sbH * 0.5, 0);
+    sbBody.position.set(0, 0.12 + (sbH - 0.14) * 0.5, 0);
     sbBody.castShadow = true;
     sbBody.receiveShadow = true;
     sbGroup.add(sbBody);
 
+    const topSlab = new THREE.Mesh(
+      createChamferedBoxGeo(sbL + 0.02, 0.03, sbW + 0.02, 0.02),
+      this.materials.stoneTop
+    );
+    topSlab.position.set(0, sbH - 0.015, 0);
+    topSlab.castShadow = true;
+    sbGroup.add(topSlab);
+
+    for (const fx of [-sbL * 0.5 + 0.1, 0, sbL * 0.5 - 0.1]) {
+      for (const fz of [-sbW * 0.5 + 0.08, sbW * 0.5 - 0.08]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.013, 0.12, 8), this.materials.chairLegs);
+        leg.position.set(fx, 0.06, fz);
+        sbGroup.add(leg);
+      }
+    }
+
     // Brushed brass hardware handles
     const pullGeo = new THREE.CylinderGeometry(0.007, 0.007, 0.1, 8);
     pullGeo.rotateZ(Math.PI / 2);
-    for (const px of [-0.5, 0.0, 0.5]) {
+    for (const px of [-0.55, 0.0, 0.55]) {
       const pull = new THREE.Mesh(pullGeo, this.materials.brassMetal);
       pull.position.set(px, sbH * 0.65, sbW * 0.5 + 0.015);
       sbGroup.add(pull);
     }
 
-    // Decorative ceramic pieces on top of credenza
+    // Sculpted ceramic carafe & tray near ends of credenza (clear of central window glass)
     const jugMesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.09, 0.24, 12),
+      createLatheGeo([[0.045, 0], [0.088, 0.09], [0.068, 0.19], [0.036, 0.25], [0.048, 0.27]], 14),
       this.materials.ceramicWhite
     );
-    jugMesh.position.set(-0.55, sbH + 0.12, 0);
+    jugMesh.position.set(-0.72, sbH, 0.02);
     jugMesh.castShadow = true;
     sbGroup.add(jugMesh);
 
-    // Position along south wall of dining hall (Z = 0.6)
-    sbGroup.position.set(-9.25, floorY, 0.6);
+    const lowTray = new THREE.Mesh(
+      createChamferedBoxGeo(0.36, 0.022, 0.24, 0.02),
+      this.materials.brassMetal
+    );
+    lowTray.position.set(0.66, sbH + 0.011, 0.02);
+    sbGroup.add(lowTray);
+
+    // Mount cleanly against solid West wall at X = -11.48, Z = 2.3 (leaves Z=0.2 Rear Pool Gallery archway 100% open!)
+    sbGroup.position.set(-11.48, floorY, 2.3);
+    sbGroup.rotation.y = Math.PI / 2;
     this.group.add(sbGroup);
 
     this.colliders.push({
       id: 'collider-dining-sideboard',
-      min: new THREE.Vector3(-9.25 - sbL * 0.5, floorY, 0.6 - sbW * 0.5),
-      max: new THREE.Vector3(-9.25 + sbL * 0.5, floorY + sbH, 0.6 + sbW * 0.5),
+      min: new THREE.Vector3(-11.75, floorY, 2.3 - sbL * 0.5),
+      max: new THREE.Vector3(-11.2, floorY + sbH, 2.3 + sbL * 0.5),
       type: 'furniture',
     });
   }
@@ -344,7 +457,7 @@ export class DiningHallBuilder {
     ring.position.set(0, 2.4, 0);
     chanGroup.add(ring);
 
-    // 6 Warm glowing glass shades along ring
+    // 6 Warm glowing glass shades along ring + warm local fill light
     const globeGeo = new THREE.SphereGeometry(0.05, 12, 10);
     for (let i = 0; i < 6; i++) {
       const ang = (i / 6) * Math.PI * 2;
@@ -352,6 +465,10 @@ export class DiningHallBuilder {
       globe.position.set(Math.cos(ang) * 0.42, 2.4, Math.sin(ang) * 0.42);
       chanGroup.add(globe);
     }
+
+    const chanLight = new THREE.PointLight(0xffe1b5, 0.9, 6.5, 1.5);
+    chanLight.position.set(0, 2.35, 0);
+    chanGroup.add(chanLight);
 
     chanGroup.position.set(cx, 0, cz);
     this.group.add(chanGroup);
@@ -376,7 +493,7 @@ export class DiningHallBuilder {
       artTex = new THREE.CanvasTexture(canvas);
       artTex.colorSpace = THREE.SRGBColorSpace;
     }
-    const artGeo = new THREE.PlaneGeometry(1.5, 0.95);
+    const artGeo = new THREE.PlaneGeometry(0.88, 1.05);
     const artMat = new THREE.MeshStandardMaterial({
       map: artTex,
       roughness: 0.75,
@@ -385,13 +502,14 @@ export class DiningHallBuilder {
     artMesh.position.set(0, 0, 0.02);
     artGroup.add(artMesh);
 
-    const frameGeo = new THREE.BoxGeometry(1.58, 1.03, 0.035);
+    const frameGeo = new THREE.BoxGeometry(0.96, 1.13, 0.032);
     const frameMesh = new THREE.Mesh(frameGeo, this.materials.brassMetal);
     frameMesh.position.set(0, 0, 0);
     artGroup.add(frameMesh);
 
-    // Mounted on wall at Z = 0.25 (facing north)
-    artGroup.position.set(-9.25, floorY + 2.0, 0.25);
+    // Mounted cleanly on solid West pier north of win-dining-west (Z = 3.92, X = -11.72 facing East)
+    artGroup.position.set(-11.72, floorY + 1.85, 3.92);
+    artGroup.rotation.y = Math.PI / 2;
     this.group.add(artGroup);
   }
 }

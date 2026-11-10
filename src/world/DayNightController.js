@@ -62,13 +62,25 @@ const SKY_FRAGMENT = `
       col = mix(col, cloudCol, cloudMask * (0.28 + uCloudFactor * 0.35));
     }
 
-    // Subtle stars on night sky
-    if (uStarIntensity > 0.01 && h > 0.12) {
-      vec2 starGrid = floor(dir.xz / (h + 0.25) * 95.0);
-      float s = hash(starGrid);
-      if (s > 0.992) {
-        float twinkle = 0.6 + 0.4 * sin(uTime * 2.2 + s * 60.0);
-        col += vec3(0.85, 0.9, 1.0) * uStarIntensity * twinkle * 0.7;
+    // Crisp circular anti-aliased pinpoint stars on night dome (isotropic spherical grid)
+    if (uStarIntensity > 0.01 && h > 0.06) {
+      float az = atan(dir.z, dir.x);
+      float el = asin(clamp(dir.y, -1.0, 1.0));
+      vec2 starGridPos = vec2(az * cos(el) * 38.0, el * 38.0);
+      vec2 cellId = floor(starGridPos);
+      vec2 cellUv = fract(starGridPos);
+      float s = hash(cellId);
+      if (s > 0.968) {
+        vec2 jitter = vec2(
+          0.24 + 0.52 * fract(s * 73.1),
+          0.24 + 0.52 * fract(s * 139.7)
+        );
+        float dist = length(cellUv - jitter);
+        float pointRadius = mix(0.055, 0.11, fract(s * 31.3));
+        float starMask = smoothstep(pointRadius, pointRadius * 0.15, dist);
+        float twinkle = 0.65 + 0.35 * sin(uTime * 2.4 + s * 80.0);
+        vec3 starTint = mix(vec3(0.84, 0.90, 1.0), vec3(1.0, 0.93, 0.82), fract(s * 17.7));
+        col += starTint * starMask * uStarIntensity * twinkle * smoothstep(0.06, 0.24, h) * 1.15;
       }
     }
 
@@ -120,14 +132,77 @@ export function createDayNightController(scene, renderer) {
   sunLight.shadow.camera.right = 38;
   sunLight.shadow.camera.top = 38;
   sunLight.shadow.camera.bottom = -38;
-  sunLight.shadow.bias = -0.00045;
-  sunLight.shadow.normalBias = 0.02;
+  sunLight.shadow.bias = -0.00035;
+  sunLight.shadow.normalBias = 0.022;
+  sunLight.shadow.radius = 2.4;
   scene.add(sunLight);
 
   // Subtle fill bounce light so interior shadows stay soft & architectural
   const bounceLight = new THREE.DirectionalLight('#EDE3D2', 0.35);
   bounceLight.position.set(-20, 12, -22);
   scene.add(bounceLight);
+
+  // Procedural PMREM studio-sky IBL environment for realistic PBR metallic/glass/stone reflections
+  const canUsePMREM =
+    renderer &&
+    typeof renderer.getContext === 'function' &&
+    typeof THREE.PMREMGenerator === 'function';
+  const pmremEnvCache = new Map();
+  let pmremGenerator = null;
+
+  function applyEnvironmentIBL(timeOfDay, isRain) {
+    if (!canUsePMREM) return;
+    const envKey = `${timeOfDay}:${isRain ? 'rain' : 'clear'}`;
+    if (!pmremEnvCache.has(envKey)) {
+      if (!pmremGenerator) {
+        pmremGenerator = new THREE.PMREMGenerator(renderer);
+        pmremGenerator.compileEquirectangularShader();
+      }
+      const envScene = new THREE.Scene();
+      const envSkyMat = new THREE.MeshBasicMaterial({ side: THREE.BackSide });
+      const envSphere = new THREE.Mesh(new THREE.SphereGeometry(20, 24, 16), envSkyMat);
+      // Tint spherical probe using current sky gradient + warm horizon + muted earth floor
+      const topCol = skyUniforms.uTopColor.value.clone();
+      const horizCol = skyUniforms.uHorizonColor.value.clone();
+      const gndCol = hemiLight.groundColor.clone();
+      const envGeo = envSphere.geometry;
+      const posAttr = envGeo.getAttribute('position');
+      const vCols = new Float32Array(posAttr.count * 3);
+      for (let i = 0; i < posAttr.count; i++) {
+        const ny = posAttr.getY(i) / 20.0;
+        const c = ny >= 0
+          ? horizCol.clone().lerp(topCol, Math.min(1, ny * 1.15))
+          : horizCol.clone().lerp(gndCol, Math.min(1, -ny * 1.6));
+        vCols[i * 3] = c.r;
+        vCols[i * 3 + 1] = c.g;
+        vCols[i * 3 + 2] = c.b;
+      }
+      envGeo.setAttribute('color', new THREE.BufferAttribute(vCols, 3));
+      envSkyMat.vertexColors = true;
+      envScene.add(envSphere);
+
+      // Warm solar/moon highlight disc in probe so water/glass/brass catch directional gleam
+      const sunDisc = new THREE.Mesh(
+        new THREE.SphereGeometry(2.6, 12, 12),
+        new THREE.MeshBasicMaterial({ color: skyUniforms.uSunColor.value })
+      );
+      sunDisc.position.copy(skyUniforms.uSunDir.value).multiplyScalar(17);
+      envScene.add(sunDisc);
+
+      const rt = pmremGenerator.fromScene(envScene, 0.04);
+      envGeo.dispose();
+      envSkyMat.dispose();
+      sunDisc.geometry.dispose();
+      sunDisc.material.dispose();
+      pmremEnvCache.set(envKey, rt);
+    }
+    const target = pmremEnvCache.get(envKey);
+    if (target && target.texture) {
+      scene.environment = target.texture;
+      scene.environmentIntensity =
+        timeOfDay === 'day' ? (isRain ? 0.56 : 0.72) : timeOfDay === 'sunset' ? 0.58 : 0.3;
+    }
+  }
 
   // Registry of night/sunset-responsive lamps & emissive materials
   const exteriorLights = []; // { light, baseIntensity, emissiveMat, baseEmissive }
@@ -222,7 +297,7 @@ export function createDayNightController(scene, renderer) {
       skyUniforms.uHorizonColor.value.set('#F4A579');
       skyUniforms.uSunDir.value.set(-0.78, 0.2, 0.58).normalize();
       skyUniforms.uSunColor.value.set('#FFB066');
-      skyUniforms.uStarIntensity.value = 0.12;
+      skyUniforms.uStarIntensity.value = 0.0;
 
       sunLight.position.set(-40, 11, 28);
       sunLight.color.set('#FFA964');
@@ -282,6 +357,8 @@ export function createDayNightController(scene, renderer) {
         if (l.light) l.light.intensity = l.baseIntensity;
       }
     }
+
+    applyEnvironmentIBL(timeOfDay, isRain);
   }
 
   function applyQuality(shadowSize) {
@@ -318,6 +395,17 @@ export function createDayNightController(scene, renderer) {
     }
   }
 
+  function dispose() {
+    for (const rt of pmremEnvCache.values()) {
+      if (rt && typeof rt.dispose === 'function') rt.dispose();
+    }
+    pmremEnvCache.clear();
+    if (pmremGenerator && typeof pmremGenerator.dispose === 'function') {
+      pmremGenerator.dispose();
+      pmremGenerator = null;
+    }
+  }
+
   applyState('day', 'clear');
 
   return {
@@ -328,6 +416,7 @@ export function createDayNightController(scene, renderer) {
     applyState,
     applyQuality,
     update,
+    dispose,
     getState: () => ({ timeOfDay: currentMode, weather: currentWeather }),
   };
 }
