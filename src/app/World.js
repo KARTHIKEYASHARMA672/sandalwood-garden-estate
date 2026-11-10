@@ -148,10 +148,33 @@ export class World {
               x: bench.position.x,
               y: bench.position.y + 0.45,
               z: bench.position.z,
-              yaw: bench.rotation.y,
+              yaw: bench.rotation.y + Math.PI,
             }),
         });
       }
+    }
+
+    // Porch, Balcony, and Pool Terrace sun lounger seats
+    const extraSeats = [
+      ...(this.house?.userData?.seats || []),
+      ...(this.garden?.poolTerrace?.seats || []),
+    ];
+    for (const seat of extraSeats) {
+      const dummyGeo = new THREE.BoxGeometry(0.55, 0.45, 0.55);
+      const dummyMat = new THREE.MeshBasicMaterial({ visible: false });
+      const seatMesh = new THREE.Mesh(dummyGeo, dummyMat);
+      seatMesh.position.set(seat.x, seat.y, seat.z);
+      this.group.add(seatMesh);
+
+      this.interaction.register({
+        id: `seat-${seat.id}`,
+        mesh: seatMesh,
+        kind: 'sit',
+        label: seat.label || 'Lounge Seat',
+        prompt: () => 'E — Sit',
+        range: 2.2,
+        onInteract: () => this.playerController.sitAt(seat),
+      });
     }
   }
 
@@ -229,6 +252,9 @@ export class World {
     if (this.dayNight && typeof this.dayNight.update === 'function') {
       this.dayNight.update(dt, elapsed, cameraPos);
     }
+    if (this.house && typeof this.house.update === 'function') {
+      this.house.update(dt);
+    }
     if (this.garden && typeof this.garden.update === 'function') {
       this.garden.update(dt, elapsed);
     }
@@ -241,6 +267,9 @@ export class World {
     if (this._unsubscribeStore) {
       this._unsubscribeStore();
       this._unsubscribeStore = null;
+    }
+    if (this.dayNight && typeof this.dayNight.dispose === 'function') {
+      this.dayNight.dispose();
     }
     if (this.furnishings && typeof this.furnishings.dispose === 'function') {
       this.furnishings.dispose();
