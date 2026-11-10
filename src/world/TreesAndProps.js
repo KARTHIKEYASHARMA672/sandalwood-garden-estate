@@ -1,6 +1,89 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getTerrainHeight } from '../house/HouseArchitecture.js';
-import { getTreeBarkTexture, getTimberTextures, getStoneTileTextures } from '../assets/procedural/TextureGenerator.js';
+import {
+  getTreeBarkTextures,
+  getFoliageTexture,
+  getTimberTextures,
+  getStoneTileTextures,
+  getBrushedMetalTextures,
+} from '../assets/procedural/TextureGenerator.js';
+
+function prepForMerge(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  for (const name of Object.keys(g.attributes)) {
+    if (name !== 'position' && name !== 'normal' && name !== 'uv' && name !== 'color') {
+      g.deleteAttribute(name);
+    }
+  }
+  return g;
+}
+
+function safeMerge(parts) {
+  if (!parts || parts.length === 0) return null;
+  const clean = parts.map(prepForMerge);
+  const hasColor = clean.every((g) => Boolean(g.getAttribute('color')));
+  if (!hasColor) {
+    clean.forEach((g) => g.deleteAttribute('color'));
+  }
+  const merged = mergeGeometries(clean, false);
+  for (let i = 0; i < clean.length; i++) {
+    if (clean[i] !== parts[i]) clean[i].dispose();
+  }
+  return merged;
+}
+
+function createFoliageBlobGeo(rx, ry, rz, cx, cy, cz, seed = 1, detail = 2) {
+  // Multi-harmonic serrated leaf-cluster geometry with deep canopy core AO so branches read leafy
+  const segW = detail >= 2 ? 12 : detail === 1 ? 9 : 7;
+  const segH = detail >= 2 ? 9 : detail === 1 ? 7 : 5;
+  const base = new THREE.SphereGeometry(1, segW, segH);
+  const pos = base.getAttribute('position');
+  const colArr = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const macro =
+      0.16 * Math.sin(x * 4.2 + y * 3.1 + seed) +
+      0.12 * Math.cos(z * 4.7 - y * 3.4 + seed * 1.7);
+    const leafSerration =
+      0.09 * Math.sin(x * 11.4 + seed * 2.3) * Math.cos(z * 10.6 - y * 8.2);
+    const n = 1 + macro + leafSerration;
+    pos.setXYZ(i, x * rx * n, y * ry * n, z * rz * n);
+    // Dappled crown interior core shadow to sunlit upper foliage crest
+    const yNorm = Math.max(0, Math.min(1, y * 0.5 + 0.5));
+    const microAO = 0.92 + 0.08 * Math.sin((x + z) * 9.0 + seed);
+    const ao = (0.56 + 0.54 * yNorm) * microAO;
+    colArr[i * 3] = ao * 0.96;
+    colArr[i * 3 + 1] = ao * 1.05;
+    colArr[i * 3 + 2] = ao * 0.91;
+  }
+  base.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+  base.computeVertexNormals();
+  base.translate(cx, cy, cz);
+  return base;
+}
+
+/**
+ * Builds an arching spear-leaf rosette cluster whose leaves rise from inside the pot soil
+ * cleanly above `rimY` without clipping the outer pot wall.
+ */
+function buildAgaveLeafBladeGeometry(length, width, tipRise, reachRadius) {
+  const geo = new THREE.PlaneGeometry(width, length, 2, 4);
+  const pos = geo.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) {
+    const lx = pos.getX(i);
+    const t = Math.max(0, Math.min(1, (pos.getY(i) + length * 0.5) / length));
+    const taper = Math.sin(Math.min(1, t * 0.85 + 0.12) * Math.PI) * (1 - t * 0.72);
+    const forward = t * reachRadius;
+    const upward = Math.sin(t * Math.PI * 0.65) * tipRise + t * 0.08;
+    const midRibCurve = (1 - Math.abs(lx) / Math.max(0.001, width * 0.5)) * -0.008;
+    pos.setXYZ(i, lx * taper, upward, forward + midRibCurve);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
 
 /**
  * Procedural Tree Silhouettes and Specifications per PRD Section 5.1:
@@ -33,7 +116,7 @@ export const TREE_SPECS = [
 export const BENCH_CONFIGS = [
   { id: 'bench-path-left', x: -4.5, z: 24.0, rotY: Math.PI / 2, label: 'West Path Garden Bench' },
   { id: 'bench-path-right', x: 11.5, z: 24.0, rotY: -Math.PI / 2, label: 'East Path Garden Bench' },
-  { id: 'bench-arrival', x: 3.5, z: 42.5, rotY: 0, label: 'Arrival Garden Bench' },
+  { id: 'bench-arrival', x: 3.5, z: 42.5, rotY: Math.PI, label: 'Arrival Garden Bench' },
   { id: 'bench-pool-side', x: -15.5, z: -13.5, rotY: Math.PI / 2, label: 'Pool View Garden Bench' },
 ];
 
@@ -55,126 +138,231 @@ export const PATH_LANTERN_CONFIGS = [
 ];
 
 /**
- * Procedural Tree Builder creating branching trunks and tiered organic canopies.
+ * Procedural Tree Builder creating gnarled curved trunks, branching limbs, and multi-layered organic leaf canopies.
  */
-function buildTreeMesh(spec) {
+function buildTreeMesh(spec, treeMats) {
   const treeGroup = new THREE.Group();
   treeGroup.name = spec.id;
 
-  const barkTex = typeof document !== 'undefined' ? getTreeBarkTexture() : null;
-  const barkMat = new THREE.MeshStandardMaterial({
-    map: barkTex,
-    color: '#6D503A',
-    roughness: 0.82,
-    metalness: 0.05,
-  });
+  const { barkMat, getLeafPair, getBlossomMat } = treeMats;
+  const { leafMat, deepLeafMat } = getLeafPair(spec.leafColor);
 
-  const leafMat = new THREE.MeshStandardMaterial({
-    color: spec.leafColor,
-    roughness: 0.72,
-    metalness: 0.02,
-    side: THREE.DoubleSide,
-  });
+  const seed = Math.abs(Math.round(spec.x * 13 + spec.z * 7)) + 11;
+  const trunkH = spec.height * (spec.type === 'ornamental' ? 0.34 : 0.42);
+  const leanX = Math.sin(seed * 0.7) * 0.14;
+  const leanZ = Math.cos(seed * 1.1) * 0.12;
 
-  const trunkH = spec.height * 0.42; // trunk before branches ~1.8 - 2.5 m
-  const trunkGeo = new THREE.CylinderGeometry(spec.trunkRadius * 0.75, spec.trunkRadius * 1.25, trunkH, 10);
-  trunkGeo.translate(0, trunkH * 0.5, 0);
+  // Tapered flared root-collar & slightly twisted main trunk
+  const woodParts = [];
+  const rootFlare = new THREE.CylinderGeometry(spec.trunkRadius * 0.92, spec.trunkRadius * 1.55, 0.48, 12);
+  rootFlare.translate(0, 0.24, 0);
+  woodParts.push(rootFlare);
 
-  const trunk = new THREE.Mesh(trunkGeo, barkMat);
-  trunk.castShadow = true;
-  trunk.receiveShadow = true;
-  treeGroup.add(trunk);
+  const trunkCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.2, 0),
+    new THREE.Vector3(leanX * 0.4, trunkH * 0.45, leanZ * 0.4),
+    new THREE.Vector3(leanX, trunkH, leanZ),
+  ]);
+  const trunkTube = new THREE.TubeGeometry(trunkCurve, 10, spec.trunkRadius * 0.82, 10, false);
+  // Taper upper trunk smoothly along curve
+  const tPos = trunkTube.getAttribute('position');
+  for (let i = 0; i < tPos.count; i++) {
+    const py = tPos.getY(i);
+    const hFrac = Math.max(0, Math.min(1, py / Math.max(0.2, trunkH)));
+    const pinch = 1.0 - hFrac * 0.28;
+    const cx = leanX * hFrac;
+    const cz = leanZ * hFrac;
+    tPos.setX(i, cx + (tPos.getX(i) - cx) * pinch);
+    tPos.setZ(i, cz + (tPos.getZ(i) - cz) * pinch);
+  }
+  trunkTube.computeVertexNormals();
+  woodParts.push(trunkTube);
 
-  // Primary fork branches
-  const branchCount = spec.type === 'shade' ? 4 : 3;
-  for (let b = 0; b < branchCount; b++) {
-    const ang = (b / branchCount) * Math.PI * 2 + b * 0.2;
-    const bLen = spec.height * 0.28;
-    const bGeo = new THREE.CylinderGeometry(spec.trunkRadius * 0.35, spec.trunkRadius * 0.6, bLen, 6);
-    bGeo.translate(0, bLen * 0.5, 0);
+  // Forking primary & secondary boughs extending visibly into the crown
+  const forkCount = spec.type === 'shade' ? 5 : spec.type === 'flowering' ? 4 : 3;
+  const forkEnds = [];
+  for (let b = 0; b < forkCount; b++) {
+    const ang = (b / forkCount) * Math.PI * 2 + (seed % 7) * 0.25;
+    const spread = spec.crownRadius * (spec.type === 'ornamental' ? 0.42 : 0.68);
+    const rise = spec.height * (spec.type === 'ornamental' ? 0.34 : 0.27) + (b % 2) * 0.28;
+    const sx = leanX + Math.cos(ang) * spread * 0.38;
+    const sz = leanZ + Math.sin(ang) * spread * 0.38;
+    const ex = leanX + Math.cos(ang) * spread;
+    const ez = leanZ + Math.sin(ang) * spread;
+    const forkCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(leanX, trunkH * 0.88, leanZ),
+      new THREE.Vector3(sx, trunkH + rise * 0.55, sz),
+      new THREE.Vector3(ex, trunkH + rise, ez),
+    ]);
+    woodParts.push(new THREE.TubeGeometry(forkCurve, 7, spec.trunkRadius * 0.36, 7, false));
+    forkEnds.push({ x: ex, y: trunkH + rise, z: ez, ang });
 
-    const branch = new THREE.Mesh(bGeo, barkMat);
-    branch.position.set(0, trunkH * 0.9, 0);
-    branch.rotation.y = ang;
-    branch.rotation.z = spec.type === 'shade' ? 0.48 : 0.32;
-    branch.castShadow = true;
-    treeGroup.add(branch);
+    // Secondary twig sub-fork
+    const twigAng = ang + (b % 2 === 0 ? 0.52 : -0.48);
+    const twigEnd = new THREE.Vector3(
+      ex + Math.cos(twigAng) * spread * 0.4,
+      trunkH + rise + 0.36,
+      ez + Math.sin(twigAng) * spread * 0.4
+    );
+    const twigCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(sx, trunkH + rise * 0.55, sz),
+      twigEnd,
+    ]);
+    woodParts.push(new THREE.TubeGeometry(twigCurve, 4, spec.trunkRadius * 0.2, 6, false));
   }
 
-  // Tiered foliage clusters
+  const mergedWoodGeo = safeMerge(woodParts);
+  woodParts.forEach((g) => g.dispose());
+  const woodMesh = new THREE.Mesh(mergedWoodGeo, barkMat);
+  woodMesh.castShadow = true;
+  woodMesh.receiveShadow = true;
+  treeGroup.add(woodMesh);
+
+  // Layered Multi-Spray Canopy Group (carries sway animation)
   const crownGroup = new THREE.Group();
-  crownGroup.position.y = trunkH * 0.95;
+  crownGroup.position.set(leanX, trunkH * 0.96, leanZ);
+
+  const outerParts = [];
+  const innerParts = [];
 
   if (spec.type === 'shade') {
-    // Broad spreading canopy with 6 overlapping organic cluster domes
-    const clusters = [
-      { x: 0, y: spec.height * 0.35, z: 0, r: spec.crownRadius * 0.95, sy: 0.75 },
-      { x: -spec.crownRadius * 0.5, y: spec.height * 0.22, z: spec.crownRadius * 0.3, r: spec.crownRadius * 0.75, sy: 0.7 },
-      { x: spec.crownRadius * 0.5, y: spec.height * 0.24, z: -spec.crownRadius * 0.25, r: spec.crownRadius * 0.78, sy: 0.7 },
-      { x: spec.crownRadius * 0.25, y: spec.height * 0.28, z: spec.crownRadius * 0.45, r: spec.crownRadius * 0.7, sy: 0.72 },
-      { x: -spec.crownRadius * 0.35, y: spec.height * 0.25, z: -spec.crownRadius * 0.4, r: spec.crownRadius * 0.72, sy: 0.7 },
-      { x: 0, y: spec.height * 0.48, z: 0, r: spec.crownRadius * 0.65, sy: 0.65 },
-    ];
-
-    clusters.forEach((c) => {
-      const geo = new THREE.DodecahedronGeometry(c.r, 1);
-      geo.scale(1, c.sy, 1);
-      const mesh = new THREE.Mesh(geo, leafMat);
-      mesh.position.set(c.x, c.y, c.z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      crownGroup.add(mesh);
-    });
-  } else if (spec.type === 'ornamental') {
-    // Slender tiered conical canopy
-    const tiers = 4;
-    for (let t = 0; t < tiers; t++) {
-      const r = spec.crownRadius * (1.0 - t * 0.18);
-      const ty = t * (spec.height * 0.16);
-      const geo = new THREE.ConeGeometry(r, spec.height * 0.28, 8);
-      geo.translate(0, spec.height * 0.14, 0);
-      const mesh = new THREE.Mesh(geo, leafMat);
-      mesh.position.y = ty;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      crownGroup.add(mesh);
-    }
-  } else {
-    // Flowering tree with blossom clusters
-    const clusters = [
-      { x: 0, y: spec.height * 0.28, z: 0, r: spec.crownRadius * 0.85 },
-      { x: -spec.crownRadius * 0.4, y: spec.height * 0.2, z: 0.2, r: spec.crownRadius * 0.65 },
-      { x: spec.crownRadius * 0.4, y: spec.height * 0.22, z: -0.2, r: spec.crownRadius * 0.65 },
-    ];
-    clusters.forEach((c) => {
-      const geo = new THREE.IcosahedronGeometry(c.r, 1);
-      const mesh = new THREE.Mesh(geo, leafMat);
-      mesh.position.set(c.x, c.y, c.z);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      crownGroup.add(mesh);
-    });
-
-    if (spec.blossomColor) {
-      const blossomMat = new THREE.MeshStandardMaterial({
-        color: spec.blossomColor,
-        roughness: 0.65,
-      });
-      // Small decorative blossom accents scattered on outer crown
-      for (let i = 0; i < 18; i++) {
-        const bGeo = new THREE.SphereGeometry(0.08, 4, 4);
-        const bMesh = new THREE.Mesh(bGeo, blossomMat);
-        const ang = i * 1.35;
-        const dist = spec.crownRadius * (0.6 + (i % 3) * 0.15);
-        bMesh.position.set(
-          Math.cos(ang) * dist,
-          spec.height * (0.18 + (i % 4) * 0.08),
-          Math.sin(ang) * dist
+    const r = spec.crownRadius;
+    const hSpan = spec.height * 0.48;
+    // Inner shaded bough core clusters (smaller & recessed so limbs glimpse through)
+    for (const f of forkEnds) {
+      const fx = f.x - leanX;
+      const fz = f.z - leanZ;
+      const fy = f.y - trunkH * 0.96;
+      innerParts.push(createFoliageBlobGeo(r * 0.36, hSpan * 0.28, r * 0.36, fx * 0.65, fy + 0.12, fz * 0.65, seed + f.ang * 7, 1));
+      // 3 distinct leaf sprays per primary bough tip
+      for (let sub = 0; sub < 3; sub++) {
+        const sa = f.ang + (sub - 1) * 0.62;
+        const sr = r * (0.28 + (sub % 2) * 0.08);
+        const sDist = 0.25 + sub * 0.16;
+        outerParts.push(
+          createFoliageBlobGeo(
+            sr,
+            sr * 0.64,
+            sr,
+            fx + Math.cos(sa) * sDist,
+            fy + 0.18 + sub * 0.16,
+            fz + Math.sin(sa) * sDist,
+            seed + Math.round(f.ang * 10) + sub,
+            1
+          )
         );
-        crownGroup.add(bMesh);
       }
     }
+    // High sunlit upper crown sprigs
+    for (let u = 0; u < 6; u++) {
+      const ua = (u / 6) * Math.PI * 2 + seed * 0.21;
+      const uDist = u === 0 ? 0 : r * 0.34;
+      const uRad = r * (u === 0 ? 0.38 : 0.30);
+      outerParts.push(
+        createFoliageBlobGeo(
+          uRad,
+          uRad * 0.65,
+          uRad,
+          Math.cos(ua) * uDist,
+          hSpan * (u === 0 ? 0.88 : 0.72 + (u % 2) * 0.1),
+          Math.sin(ua) * uDist,
+          seed + 30 + u,
+          1
+        )
+      );
+    }
+  } else if (spec.type === 'ornamental') {
+    const r = spec.crownRadius;
+    const hSpan = spec.height * 0.64;
+    const tiers = 8;
+    for (let t = 0; t < tiers; t++) {
+      const frac = t / (tiers - 1);
+      const tr = r * (1.0 - frac * 0.7);
+      const ty = hSpan * (0.12 + frac * 0.86);
+      innerParts.push(createFoliageBlobGeo(tr * 0.68, tr * 0.5, tr * 0.68, 0, ty, 0, seed + t * 3, 1));
+      const tufts = t === tiers - 1 ? 1 : 4;
+      for (let k = 0; k < tufts; k++) {
+        const ka = (k / tufts) * Math.PI * 2 + t * 0.85;
+        const off = t === tiers - 1 ? 0 : tr * 0.44;
+        outerParts.push(
+          createFoliageBlobGeo(
+            tr * 0.46,
+            tr * 0.38,
+            tr * 0.46,
+            Math.cos(ka) * off,
+            ty + (k % 2) * 0.09,
+            Math.sin(ka) * off,
+            seed + 50 + t * 4 + k,
+            1
+          )
+        );
+      }
+    }
+  } else {
+    // Flowering ornamental sandalwood/cherry with delicate fork-tip foliage sprays & blossoms
+    const r = spec.crownRadius;
+    const hSpan = spec.height * 0.45;
+    for (const f of forkEnds) {
+      const fx = f.x - leanX;
+      const fz = f.z - leanZ;
+      const fy = f.y - trunkH * 0.96;
+      innerParts.push(createFoliageBlobGeo(r * 0.32, hSpan * 0.25, r * 0.32, fx * 0.6, fy + 0.1, fz * 0.6, seed + 5 + f.ang, 1));
+      for (let sub = 0; sub < 3; sub++) {
+        const sa = f.ang + (sub - 1) * 0.58;
+        const sr = r * (0.26 + (sub % 2) * 0.06);
+        outerParts.push(
+          createFoliageBlobGeo(
+            sr,
+            sr * 0.66,
+            sr,
+            fx + Math.cos(sa) * (0.2 + sub * 0.14),
+            fy + 0.16 + (sub % 2) * 0.14,
+            fz + Math.sin(sa) * (0.2 + sub * 0.14),
+            seed + 20 + Math.round(f.ang * 10) + sub,
+            1
+          )
+        );
+      }
+    }
+    for (let u = 0; u < 4; u++) {
+      const ua = (u / 4) * Math.PI * 2;
+      outerParts.push(
+        createFoliageBlobGeo(r * 0.32, hSpan * 0.26, r * 0.32, Math.cos(ua) * r * 0.26, hSpan * 0.78, Math.sin(ua) * r * 0.26, seed + 44 + u, 1)
+      );
+    }
+
+    if (spec.blossomColor) {
+      const blossomMat = getBlossomMat(spec.blossomColor);
+      const blossomParts = [];
+      for (let i = 0; i < 48; i++) {
+        const ang = i * 1.48 + seed * 0.11;
+        const layer = i % 4;
+        const dist = r * (0.2 + (i % 5) * 0.1);
+        const by = hSpan * (0.32 + layer * 0.14);
+        const br = 0.055 + (i % 3) * 0.018;
+        blossomParts.push(createFoliageBlobGeo(br, br * 0.78, br, Math.cos(ang) * dist, by, Math.sin(ang) * dist, i, 0));
+      }
+      const bGeo = safeMerge(blossomParts);
+      blossomParts.forEach((g) => g.dispose());
+      const bMesh = new THREE.Mesh(bGeo, blossomMat);
+      bMesh.castShadow = true;
+      crownGroup.add(bMesh);
+    }
   }
+
+  const innerGeo = safeMerge(innerParts);
+  innerParts.forEach((g) => g.dispose());
+  const innerMesh = new THREE.Mesh(innerGeo, deepLeafMat);
+  innerMesh.castShadow = true;
+  innerMesh.receiveShadow = true;
+  crownGroup.add(innerMesh);
+
+  const outerGeo = safeMerge(outerParts);
+  outerParts.forEach((g) => g.dispose());
+  const outerMesh = new THREE.Mesh(outerGeo, leafMat);
+  outerMesh.castShadow = true;
+  outerMesh.receiveShadow = true;
+  crownGroup.add(outerMesh);
 
   treeGroup.add(crownGroup);
   treeGroup.userData.crown = crownGroup;
@@ -183,85 +371,84 @@ function buildTreeMesh(spec) {
 }
 
 /**
- * Builds a carved stone & sandalwood timber bench (1.50 m W x 0.55 m D x 0.85 m H).
+ * Builds a carved limestone & sandalwood timber bench (1.50 m W x 0.55 m D x 0.85 m H).
  */
-function buildBenchMesh(config) {
+function buildBenchMesh(config, shared) {
   const benchGroup = new THREE.Group();
   benchGroup.name = config.id;
 
-  const stoneTex = typeof document !== 'undefined' ? getStoneTileTextures('foyer', 2, 2) : { map: null };
-  const stoneMat = new THREE.MeshStandardMaterial({
-    map: stoneTex.map,
-    color: '#D4C6B0',
-    roughness: 0.85,
-  });
+  const { stoneMat, woodMat, bronzeMat } = shared;
 
-  const timberPair = typeof document !== 'undefined'
-    ? getTimberTextures('sandalwood', 2, 1)
-    : { map: null, bumpMap: null };
-  const woodMat = new THREE.MeshStandardMaterial({
-    map: timberPair.map,
-    bumpMap: timberPair.bumpMap,
-    bumpScale: 0.02,
-    color: '#A8794D',
-    roughness: 0.75,
-  });
-
-  // 1. Dual carved stone pedestal legs
-  const legW = 0.12;
+  // 1. Profiled carved stone pedestals with base plinth & top corbel lip
+  const legW = 0.13;
   const legD = 0.48;
   const legH = 0.42;
 
-  const legLeft = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legD), stoneMat);
-  legLeft.position.set(-0.62, legH * 0.5, 0);
-  legLeft.castShadow = true;
-  legLeft.receiveShadow = true;
-  benchGroup.add(legLeft);
+  for (const lx of [-0.6, 0.6]) {
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.54), stoneMat);
+    pad.position.set(lx, 0.025, 0);
+    pad.receiveShadow = true;
+    benchGroup.add(pad);
 
-  const legRight = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legD), stoneMat);
-  legRight.position.set(0.62, legH * 0.5, 0);
-  legRight.castShadow = true;
-  legRight.receiveShadow = true;
-  benchGroup.add(legRight);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(legW, legH - 0.09, legD - 0.06), stoneMat);
+    leg.position.set(lx, 0.05 + (legH - 0.09) * 0.5, 0);
+    leg.castShadow = true;
+    leg.receiveShadow = true;
+    benchGroup.add(leg);
 
-  // 2. Sandalwood timber slatted seat (1.50 m W x 0.52 m D)
-  const seatSlats = 5;
-  const slatW = 1.5;
-  const slatD = 0.085;
-  const slatH = 0.035;
+    const corbel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.52), stoneMat);
+    corbel.position.set(lx, legH - 0.025, 0);
+    corbel.castShadow = true;
+    benchGroup.add(corbel);
+  }
+
+  // 2. Contoured Sandalwood Timber Slatted Seat (6 ergonomic slats)
+  const seatSlats = 6;
+  const slatW = 1.54;
+  const slatD = 0.07;
+  const slatH = 0.032;
 
   for (let s = 0; s < seatSlats; s++) {
     const slat = new THREE.Mesh(new THREE.BoxGeometry(slatW, slatH, slatD), woodMat);
-    const sz = -0.2 + s * (slatD + 0.015);
-    slat.position.set(0, legH + slatH * 0.5, sz);
+    const sz = -0.2 + s * (slatD + 0.012);
+    const curveY = s === 0 ? -0.008 : s === seatSlats - 1 ? -0.01 : 0;
+    slat.position.set(0, legH + slatH * 0.5 + curveY, sz);
     slat.castShadow = true;
     slat.receiveShadow = true;
     benchGroup.add(slat);
   }
 
-  // 3. Slatted Backrest (up to 0.85 m total height)
+  // 3. Tilted Slatted Backrest with shaped crest rail
   const backSlats = 3;
   for (let b = 0; b < backSlats; b++) {
-    const bSlat = new THREE.Mesh(new THREE.BoxGeometry(slatW, 0.08, 0.03), woodMat);
-    const by = legH + 0.15 + b * 0.11;
-    bSlat.position.set(0, by, -0.24);
-    bSlat.rotation.x = -0.08; // gentle ergonomic back tilt
+    const bSlat = new THREE.Mesh(new THREE.BoxGeometry(slatW - 0.04, 0.072, 0.028), woodMat);
+    const by = legH + 0.14 + b * 0.105;
+    bSlat.position.set(0, by, -0.23 - b * 0.01);
+    bSlat.rotation.x = -0.11;
     bSlat.castShadow = true;
     benchGroup.add(bSlat);
   }
 
-  // 4. Backrest support posts
-  const postGeo = new THREE.BoxGeometry(0.04, 0.45, 0.04);
-  postGeo.rotateX(-0.08);
-  const postL = new THREE.Mesh(postGeo, woodMat);
-  postL.position.set(-0.62, legH + 0.22, -0.22);
-  benchGroup.add(postL);
+  // 4. Armrests, support posts & bronze bolt studs
+  const postGeo = new THREE.BoxGeometry(0.045, 0.44, 0.045);
+  postGeo.rotateX(-0.11);
+  for (const px of [-0.62, 0.62]) {
+    const post = new THREE.Mesh(postGeo, woodMat);
+    post.position.set(px, legH + 0.21, -0.22);
+    post.castShadow = true;
+    benchGroup.add(post);
 
-  const postR = new THREE.Mesh(postGeo, woodMat);
-  postR.position.set(0.62, legH + 0.22, -0.22);
-  benchGroup.add(postR);
+    const armLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.024, 0.21, 8), bronzeMat);
+    armLeg.position.set(px * 1.1, legH + 0.105, 0.15);
+    armLeg.castShadow = true;
+    benchGroup.add(armLeg);
 
-  // Interaction user data for sitting
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.036, 0.45), woodMat);
+    arm.position.set(px * 1.1, legH + 0.21, -0.02);
+    arm.castShadow = true;
+    benchGroup.add(arm);
+  }
+
   benchGroup.userData = {
     id: config.id,
     type: 'bench',
@@ -275,46 +462,76 @@ function buildBenchMesh(config) {
 }
 
 /**
- * Builds a low pathway bollard luminaire (0.45 m tall, bronze base, warm glowing core).
+ * Builds a pathway bollard luminaire (0.45 m tall, bronze base, louvered hood, warm 2700 K core).
  */
-function buildPathLantern(config) {
+function buildPathLantern(config, idx = 0, shared = null) {
   const lanternGroup = new THREE.Group();
   lanternGroup.name = config.id;
 
-  // Dark bronze metal stanchion
-  const bronzeMat = new THREE.MeshStandardMaterial({
-    color: '#2B241E',
-    metalness: 0.82,
-    roughness: 0.38,
-  });
+  const bronzeMat = shared.bronzeMat;
 
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.085, 0.25, 8), bronzeMat);
-  base.position.y = 0.125;
+  // Plinth collar & fluted stanchion
+  const plinth = new THREE.Mesh(shared.plinthGeo, bronzeMat);
+  plinth.position.y = 0.02;
+  lanternGroup.add(plinth);
+
+  const base = new THREE.Mesh(shared.baseGeo, bronzeMat);
+  base.position.y = 0.15;
   base.castShadow = true;
   lanternGroup.add(base);
 
-  // Warm luminous glass core (2700 K warm amber)
+  // Warm luminous frosted glass cylinder (2700 K warm amber)
   const glowMat = new THREE.MeshStandardMaterial({
     color: '#FFD488',
     emissive: '#FFB850',
     emissiveIntensity: 0.85,
-    roughness: 0.2,
+    roughness: 0.22,
   });
 
-  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.14, 8), glowMat);
-  core.position.y = 0.32;
+  const core = new THREE.Mesh(shared.coreGeo, glowMat);
+  core.position.y = 0.33;
   lanternGroup.add(core);
 
-  // Top bronze protective hood
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.07, 8), bronzeMat);
-  cap.position.y = 0.42;
+  // Protective vertical bronze bars + louvered protective hood + apex cap
+  for (let s = 0; s < 3; s++) {
+    const a = (s / 3) * Math.PI * 2;
+    const strut = new THREE.Mesh(shared.strutGeo, bronzeMat);
+    strut.position.set(Math.cos(a) * 0.062, 0.33, Math.sin(a) * 0.062);
+    lanternGroup.add(strut);
+  }
+
+  const cap = new THREE.Mesh(shared.capGeo, bronzeMat);
+  cap.position.y = 0.43;
   cap.castShadow = true;
   lanternGroup.add(cap);
 
+  // Subtle ground warm pool decal disk for night ambience
+  const poolGlowMat = new THREE.MeshBasicMaterial({
+    color: '#FFBF68',
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+  });
+  const poolDisc = new THREE.Mesh(shared.poolDiscGeo, poolGlowMat);
+  poolDisc.rotation.x = -Math.PI / 2;
+  poolDisc.position.y = 0.008;
+  lanternGroup.add(poolDisc);
+
+  // Real warm PointLights on staggered pathway bollards (registered with DayNightController via World.js)
+  let pointLight = null;
+  if (idx === 1 || idx === 5 || idx === 8) {
+    pointLight = new THREE.PointLight('#FFB458', 0.95, 9.5, 1.6);
+    pointLight.position.y = 0.36;
+    lanternGroup.add(pointLight);
+  }
+
   lanternGroup.userData = {
     glowMat,
+    emissiveMat: glowMat,
+    pointLight,
     setIntensity: (val) => {
       glowMat.emissiveIntensity = val;
+      poolGlowMat.opacity = Math.max(0, Math.min(0.24, (val - 0.15) * 0.22));
     },
   };
 
@@ -322,17 +539,25 @@ function buildPathLantern(config) {
 }
 
 /**
- * Builds decorative garden props: natural granite boulders, planters, bird baths, hose reel.
+ * Builds decorative garden props: weathered boulders, amphora planters, turned bird baths, hose reel.
  */
 function buildDecorativeGardenProps() {
   const group = new THREE.Group();
   group.name = 'decorative-props';
 
-  // 1. 7 Natural Granite Boulders (0.25 - 0.55 m across)
+  const stoneTex = typeof document !== 'undefined'
+    ? getStoneTileTextures('foyer', 2, 2)
+    : { map: null, normalMap: null, roughnessMap: null };
+
+  // 1. 7 Weathered Natural Granite Boulders
   const rockMat = new THREE.MeshStandardMaterial({
-    color: '#8E887E',
-    roughness: 0.88,
-    metalness: 0.05,
+    map: stoneTex.map,
+    normalMap: stoneTex.normalMap,
+    normalScale: new THREE.Vector2(1.0, 1.0),
+    roughnessMap: stoneTex.roughnessMap,
+    color: '#8C857A',
+    roughness: 0.9,
+    metalness: 0.04,
   });
 
   const rockCoords = [
@@ -346,32 +571,54 @@ function buildDecorativeGardenProps() {
   ];
 
   rockCoords.forEach((r, idx) => {
-    const geo = new THREE.DodecahedronGeometry(r.scale, 1);
-    geo.scale(1.0, 0.7, 0.85);
+    const geo = new THREE.IcosahedronGeometry(r.scale, 2);
+    const pos = geo.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vy = pos.getY(i);
+      const vz = pos.getZ(i);
+      const strata = 1 + 0.16 * Math.sin(vx * 7.5 + idx) + 0.12 * Math.cos(vz * 6.2 - vy * 8.1 + idx * 1.4);
+      pos.setXYZ(i, vx * strata, vy * 0.68 * strata, vz * 0.88 * strata);
+    }
+    geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, rockMat);
     const ty = getTerrainHeight(r.x, r.z);
-    mesh.position.set(r.x, ty + r.scale * 0.35, r.z);
-    mesh.rotation.set(idx * 0.7, idx * 1.2, 0);
+    mesh.position.set(r.x, ty + r.scale * 0.28, r.z);
+    mesh.rotation.set(idx * 0.5, idx * 1.2, 0);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
   });
 
-  // 2. 3 Large Outdoor Terracotta Planters (0.45 m H x 0.50 m dia) with dwarf boxwood foliage
+  // 2. 3 Large Outdoor Turned Terracotta Amphora Planters with Arching Ornamental Fronds
   const terraMat = new THREE.MeshStandardMaterial({
-    color: '#C86A4B',
-    roughness: 0.85,
+    normalMap: stoneTex.normalMap,
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    color: '#C56747',
+    roughness: 0.82,
   });
-  const bushMat = new THREE.MeshStandardMaterial({
-    color: '#3B6B3D',
-    roughness: 0.75,
-  });
+  const soilMat = new THREE.MeshStandardMaterial({ color: '#332216', roughness: 0.96 });
+  const leafDarkMat = new THREE.MeshStandardMaterial({ color: '#315F38', roughness: 0.72, side: THREE.DoubleSide });
+  const leafLightMat = new THREE.MeshStandardMaterial({ color: '#4E7D4A', roughness: 0.68, side: THREE.DoubleSide });
 
   const planterCoords = [
-    { x: 0.9, z: 12.3 }, // Left of front porch entry
-    { x: 6.1, z: 12.3 }, // Right of front porch entry
-    { x: 1.2, z: 40.5 }, // Arrival plaza accent
+    { x: 0.9, z: 12.3 },
+    { x: 6.1, z: 12.3 },
+    { x: 1.2, z: 40.5 },
   ];
+
+  const potProfile = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.16, 0.0),
+    new THREE.Vector2(0.18, 0.05),
+    new THREE.Vector2(0.24, 0.22),
+    new THREE.Vector2(0.26, 0.36),
+    new THREE.Vector2(0.23, 0.42),
+    new THREE.Vector2(0.265, 0.45),
+    new THREE.Vector2(0.23, 0.46),
+    new THREE.Vector2(0.21, 0.39),
+  ];
+  const potGeo = new THREE.LatheGeometry(potProfile, 18);
 
   planterCoords.forEach((p, idx) => {
     const pGroup = new THREE.Group();
@@ -379,27 +626,52 @@ function buildDecorativeGardenProps() {
     const ty = getTerrainHeight(p.x, p.z);
     pGroup.position.set(p.x, ty, p.z);
 
-    // Terracotta pot
-    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.18, 0.45, 12), terraMat);
-    pot.position.y = 0.225;
+    const pot = new THREE.Mesh(potGeo, terraMat);
     pot.castShadow = true;
     pot.receiveShadow = true;
     pGroup.add(pot);
 
-    // Trimmed sphere boxwood
-    const bush = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), bushMat);
-    bush.position.y = 0.52;
-    bush.castShadow = true;
-    pGroup.add(bush);
+    const soil = new THREE.Mesh(new THREE.CircleGeometry(0.21, 14), soilMat);
+    soil.rotation.x = -Math.PI / 2;
+    soil.position.y = 0.41;
+    pGroup.add(soil);
+
+    // 14 arching spear-leaf blades emerging cleanly from soil (Y=0.43) up above pot rim (Y=0.46)
+    const innerBladeGeo = buildAgaveLeafBladeGeometry(0.32, 0.052, 0.27, 0.16);
+    const outerBladeGeo = buildAgaveLeafBladeGeometry(0.34, 0.056, 0.21, 0.24);
+    for (let f = 0; f < 14; f++) {
+      const a = (f / 14) * Math.PI * 2 + idx * 0.4;
+      const tier = f % 2;
+      const blade = new THREE.Mesh(tier === 0 ? innerBladeGeo : outerBladeGeo, tier === 0 ? leafDarkMat : leafLightMat);
+      blade.position.set(Math.cos(a) * 0.055, 0.43, Math.sin(a) * 0.055);
+      blade.rotation.y = Math.PI / 2 - a;
+      blade.castShadow = true;
+      pGroup.add(blade);
+    }
 
     group.add(pGroup);
   });
 
-  // 3. 2 Carved Stone Bird Baths / Sculptural Water Basins (0.85 m H)
+  // 3. 2 Carved Turned Limestone Bird Baths (0.85 m H)
   const bathCoords = [
     { x: -10.5, z: 20.0 },
     { x: 15.5, z: 32.0 },
   ];
+
+  const bathProfile = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.22, 0.0),
+    new THREE.Vector2(0.2, 0.06),
+    new THREE.Vector2(0.11, 0.14),
+    new THREE.Vector2(0.085, 0.45),
+    new THREE.Vector2(0.11, 0.68),
+    new THREE.Vector2(0.39, 0.78),
+    new THREE.Vector2(0.41, 0.84),
+    new THREE.Vector2(0.35, 0.84),
+    new THREE.Vector2(0.28, 0.77),
+    new THREE.Vector2(0.0, 0.75),
+  ];
+  const birdBathGeo = new THREE.LatheGeometry(bathProfile, 20);
 
   bathCoords.forEach((b, idx) => {
     const bGroup = new THREE.Group();
@@ -407,77 +679,94 @@ function buildDecorativeGardenProps() {
     const ty = getTerrainHeight(b.x, b.z);
     bGroup.position.set(b.x, ty, b.z);
 
-    // Stone pedestal & fluted base
-    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.16, 0.75, 8), rockMat);
-    ped.position.y = 0.375;
-    ped.castShadow = true;
-    bGroup.add(ped);
+    const carved = new THREE.Mesh(birdBathGeo, rockMat);
+    carved.castShadow = true;
+    carved.receiveShadow = true;
+    bGroup.add(carved);
 
-    // Shallow circular basin
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.22, 0.12, 16), rockMat);
-    basin.position.y = 0.78;
-    basin.castShadow = true;
-    bGroup.add(basin);
-
-    // Water reflective disc
     const waterDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(0.32, 16),
+      new THREE.CircleGeometry(0.33, 18),
       new THREE.MeshStandardMaterial({
-        color: '#4FA2C8',
-        roughness: 0.08,
-        metalness: 0.1,
+        color: '#5CAAD0',
+        roughness: 0.06,
+        metalness: 0.15,
       })
     );
     waterDisc.rotateX(-Math.PI / 2);
-    waterDisc.position.y = 0.82;
+    waterDisc.position.y = 0.815;
     bGroup.add(waterDisc);
 
     group.add(bGroup);
   });
 
-  // 4. Garden Hose Reel near Service Court (PRD Section 5.3)
+  // 4. Service Court Helical Garden Hose Reel (PRD Section 5.3)
   const hoseGroup = new THREE.Group();
   hoseGroup.name = 'service-hose-reel';
-  const hoseY = 0.6;
-  const hoseStand = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.02, 0.02, 0.65, 6),
-    new THREE.MeshStandardMaterial({ color: '#2B2E2A', metalness: 0.7 })
-  );
-  hoseStand.position.set(7.4, 0.325, -10.5);
-  hoseGroup.add(hoseStand);
+  const metalStandMat = new THREE.MeshStandardMaterial({ color: '#2B2E2A', metalness: 0.78, roughness: 0.36 });
+  for (const dz of [-0.14, 0.14]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 0.68, 8), metalStandMat);
+    post.position.set(7.4, 0.34, -10.5 + dz);
+    post.castShadow = true;
+    hoseGroup.add(post);
+  }
+  const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 8), metalStandMat);
+  axle.rotation.x = Math.PI / 2;
+  axle.position.set(7.4, 0.58, -10.5);
+  hoseGroup.add(axle);
 
-  // Circular hose drum with coiled green hose
-  const drum = new THREE.Mesh(
-    new THREE.TorusGeometry(0.18, 0.045, 8, 16),
-    new THREE.MeshStandardMaterial({ color: '#2E663B', roughness: 0.6 })
-  );
-  drum.position.set(7.4, hoseY, -10.5);
-  drum.rotation.y = Math.PI / 2;
-  hoseGroup.add(drum);
+  const hoseMat = new THREE.MeshStandardMaterial({ color: '#2E6B3E', roughness: 0.52 });
+  const coilPts = [];
+  for (let i = 0; i <= 48; i++) {
+    const t = i / 48;
+    const ang = t * Math.PI * 10;
+    const cz = -10.5 - 0.1 + t * 0.2;
+    coilPts.push(new THREE.Vector3(7.4 + Math.cos(ang) * 0.16, 0.58 + Math.sin(ang) * 0.16, cz));
+  }
+  const coilCurve = new THREE.CatmullRomCurve3(coilPts);
+  const hoseCoil = new THREE.Mesh(new THREE.TubeGeometry(coilCurve, 48, 0.018, 6, false), hoseMat);
+  hoseCoil.castShadow = true;
+  hoseGroup.add(hoseCoil);
   group.add(hoseGroup);
 
-  // 5. Potting Station: Watering Can and neat gardening tool set
+  // 5. Potting Station: Galvanized Watering Can + Slatted Cedar Crate + Spare Terracotta Pots
   const pottingGroup = new THREE.Group();
   pottingGroup.name = 'potting-tools-station';
   const py = getTerrainHeight(7.6, -12.0);
   pottingGroup.position.set(7.6, py, -12.0);
 
-  // Zinc watering can
-  const canMat = new THREE.MeshStandardMaterial({ color: '#7E8A7F', metalness: 0.65, roughness: 0.35 });
-  const canBody = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.24, 10), canMat);
+  const canMat = new THREE.MeshStandardMaterial({ color: '#8A948A', metalness: 0.72, roughness: 0.32 });
+  const canBody = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.12, 0.24, 14), canMat);
   canBody.position.y = 0.12;
+  canBody.castShadow = true;
   pottingGroup.add(canBody);
 
-  const canSpout = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.025, 0.26, 6), canMat);
+  const canSpout = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.024, 0.26, 8), canMat);
   canSpout.position.set(0.14, 0.18, 0);
-  canSpout.rotation.z = -0.7;
+  canSpout.rotation.z = -0.72;
   pottingGroup.add(canSpout);
 
-  // Wooden potting crate
-  const crateMat = new THREE.MeshStandardMaterial({ color: '#886241', roughness: 0.8 });
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.15, 0.3), crateMat);
-  crate.position.set(0.35, 0.075, 0);
-  pottingGroup.add(crate);
+  const handleCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.08, 0.22, 0),
+    new THREE.Vector3(-0.15, 0.14, 0),
+    new THREE.Vector3(-0.09, 0.05, 0),
+  ]);
+  pottingGroup.add(new THREE.Mesh(new THREE.TubeGeometry(handleCurve, 8, 0.008, 6, false), canMat));
+
+  const crateTex = typeof document !== 'undefined' ? getTimberTextures('teak', 1, 1) : { map: null };
+  const crateMat = new THREE.MeshStandardMaterial({ map: crateTex.map, color: '#8A6442', roughness: 0.78 });
+  const crateBase = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.3), crateMat);
+  crateBase.position.set(0.38, 0.015, 0);
+  pottingGroup.add(crateBase);
+  for (const sy of [0.06, 0.12]) {
+    for (const dz of [-0.14, 0.14]) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.02), crateMat);
+      slat.position.set(0.38, sy, dz);
+      pottingGroup.add(slat);
+    }
+  }
+  const smallPot = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.055, 0.13, 12), terraMat);
+  smallPot.position.set(0.36, 0.095, 0);
+  pottingGroup.add(smallPot);
 
   group.add(pottingGroup);
 
@@ -485,45 +774,95 @@ function buildDecorativeGardenProps() {
 }
 
 /**
- * 16 Sculpted Garden Shrubs scattered naturally in planting zones (0.45 - 0.9 m H).
+ * 16 Multi-Clump Botanical Garden Shrubs scattered naturally in planting zones (0.45 - 0.9 m H).
  */
-function buildGardenShrubs() {
+function buildGardenShrubs(foliagePbr) {
   const shrubGroup = new THREE.Group();
   shrubGroup.name = 'garden-shrubs';
 
   const shrubCoords = [
-    { x: -5.0, z: 18.0, h: 0.65, col: '#315B3A' },
-    { x: 11.8, z: 18.0, h: 0.72, col: '#52784A' },
-    { x: -5.2, z: 26.5, h: 0.58, col: '#52784A' },
-    { x: 12.0, z: 26.5, h: 0.68, col: '#315B3A' },
-    { x: -5.4, z: 34.0, h: 0.75, col: '#315B3A' },
-    { x: 12.2, z: 34.0, h: 0.62, col: '#52784A' },
-    { x: -1.0, z: 41.5, h: 0.7, col: '#52784A' },
-    { x: 8.0, z: 41.5, h: 0.65, col: '#315B3A' },
-    { x: -16.5, z: 12.0, h: 0.82, col: '#315B3A' },
-    { x: 16.5, z: 12.0, h: 0.78, col: '#52784A' },
-    { x: -19.0, z: 22.0, h: 0.85, col: '#315B3A' },
-    { x: 19.0, z: 22.0, h: 0.8, col: '#52784A' },
-    { x: -14.5, z: -8.0, h: 0.75, col: '#52784A' },
-    { x: -2.0, z: -18.0, h: 0.7, col: '#315B3A' },
-    { x: 10.5, z: -16.0, h: 0.68, col: '#52784A' },
-    { x: 20.0, z: -12.0, h: 0.82, col: '#315B3A' },
+    { x: -5.0, z: 18.0, h: 0.65, col: '#4A7A4E', bloom: '#E69EA8' },
+    { x: 11.8, z: 18.0, h: 0.72, col: '#69945B' },
+    { x: -5.2, z: 26.5, h: 0.58, col: '#69945B', bloom: '#F1DFA0' },
+    { x: 12.0, z: 26.5, h: 0.68, col: '#4A7A4E' },
+    { x: -5.4, z: 34.0, h: 0.75, col: '#4A7A4E' },
+    { x: 12.2, z: 34.0, h: 0.62, col: '#69945B', bloom: '#DF8E99' },
+    { x: -1.0, z: 41.5, h: 0.7, col: '#69945B' },
+    { x: 8.0, z: 41.5, h: 0.65, col: '#4A7A4E' },
+    { x: -16.5, z: 12.0, h: 0.82, col: '#4A7A4E' },
+    { x: 16.5, z: 12.0, h: 0.78, col: '#69945B', bloom: '#F5E7CE' },
+    { x: -19.0, z: 22.0, h: 0.85, col: '#4A7A4E' },
+    { x: 19.0, z: 22.0, h: 0.8, col: '#69945B' },
+    { x: -14.5, z: -8.0, h: 0.75, col: '#69945B', bloom: '#8FC0E4' },
+    { x: -2.0, z: -18.0, h: 0.7, col: '#4A7A4E' },
+    { x: 10.5, z: -16.0, h: 0.68, col: '#69945B' },
+    { x: 20.0, z: -12.0, h: 0.82, col: '#4A7A4E', bloom: '#E69EA8' },
   ];
 
+  const leafMatCache = new Map();
+  const bloomMatCache = new Map();
+
   shrubCoords.forEach((s, idx) => {
-    const mat = new THREE.MeshStandardMaterial({
-      color: s.col,
-      roughness: 0.8,
-    });
-    const geo = new THREE.DodecahedronGeometry(s.h * 0.6, 1);
-    geo.scale(1.2, 0.85, 1.1);
-    const mesh = new THREE.Mesh(geo, mat);
+    const sNode = new THREE.Group();
     const ty = getTerrainHeight(s.x, s.z);
-    mesh.position.set(s.x, ty + s.h * 0.45, s.z);
-    mesh.rotation.y = idx * 0.6;
+    sNode.position.set(s.x, ty, s.z);
+    sNode.rotation.y = idx * 0.7;
+
+    let mat = leafMatCache.get(s.col);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({
+        map: foliagePbr.map,
+        normalMap: foliagePbr.normalMap,
+        normalScale: new THREE.Vector2(0.75, 0.75),
+        roughnessMap: foliagePbr.roughnessMap,
+        color: s.col,
+        vertexColors: true,
+        roughness: 0.82,
+      });
+      leafMatCache.set(s.col, mat);
+    }
+    const parts = [createFoliageBlobGeo(s.h * 0.42, s.h * 0.36, s.h * 0.42, 0, s.h * 0.32, 0, idx + 3, 2)];
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 + idx * 0.3;
+      const dist = s.h * 0.34;
+      const rad = s.h * (0.28 + (k % 2) * 0.06);
+      parts.push(createFoliageBlobGeo(rad, rad * 0.85, rad, Math.cos(a) * dist, s.h * 0.25, Math.sin(a) * dist, idx * 9 + k, 2));
+    }
+    const mergedGeo = safeMerge(parts);
+    parts.forEach((g) => g.dispose());
+    const mesh = new THREE.Mesh(mergedGeo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    shrubGroup.add(mesh);
+    sNode.add(mesh);
+
+    if (s.bloom) {
+      let bloomMat = bloomMatCache.get(s.bloom);
+      if (!bloomMat) {
+        bloomMat = new THREE.MeshStandardMaterial({ color: s.bloom, roughness: 0.58 });
+        bloomMatCache.set(s.bloom, bloomMat);
+      }
+      const bParts = [];
+      for (let b = 0; b < 9; b++) {
+        const a = b * 0.72 + idx;
+        bParts.push(
+          createFoliageBlobGeo(
+            0.036,
+            0.03,
+            0.036,
+            Math.cos(a) * s.h * 0.44,
+            s.h * (0.28 + (b % 3) * 0.09),
+            Math.sin(a) * s.h * 0.44,
+            b,
+            0
+          )
+        );
+      }
+      const bGeo = safeMerge(bParts);
+      bParts.forEach((g) => g.dispose());
+      sNode.add(new THREE.Mesh(bGeo, bloomMat));
+    }
+
+    shrubGroup.add(sNode);
   });
 
   return shrubGroup;
@@ -542,9 +881,78 @@ export function createTreesAndProps() {
   const benchObjects = [];
   const pathLights = [];
 
+  // Shared tree materials (avoids rebuilding identical bark & foliage materials across 10 trees)
+  const barkPbr = typeof document !== 'undefined'
+    ? getTreeBarkTextures(2, 4)
+    : { map: null, normalMap: null, roughnessMap: null };
+  const foliagePbr = typeof document !== 'undefined'
+    ? getFoliageTexture(3, 3)
+    : { map: null, normalMap: null, roughnessMap: null };
+  const barkMat = new THREE.MeshStandardMaterial({
+    map: barkPbr.map,
+    normalMap: barkPbr.normalMap,
+    normalScale: new THREE.Vector2(1.15, 1.15),
+    roughnessMap: barkPbr.roughnessMap,
+    color: '#73543E',
+    roughness: 0.9,
+    metalness: 0.02,
+  });
+  const leafPairCache = new Map();
+  const blossomMatCache = new Map();
+  const whiteCol = new THREE.Color('#ffffff');
+  const sharedTreeMats = {
+    barkMat,
+    getLeafPair: (leafColor) => {
+      let pair = leafPairCache.get(leafColor);
+      if (!pair) {
+        // Lift tint slightly toward white so foliagePbr.map + vertex AO keep lush sunlit greens
+        const baseLeafCol = new THREE.Color(leafColor).lerp(whiteCol, 0.26);
+        const deepLeafCol = baseLeafCol.clone().multiplyScalar(0.8);
+        pair = {
+          leafMat: new THREE.MeshStandardMaterial({
+            map: foliagePbr.map,
+            normalMap: foliagePbr.normalMap,
+            normalScale: new THREE.Vector2(0.85, 0.85),
+            roughnessMap: foliagePbr.roughnessMap,
+            color: baseLeafCol,
+            vertexColors: true,
+            roughness: 0.78,
+            metalness: 0.02,
+            side: THREE.DoubleSide,
+          }),
+          deepLeafMat: new THREE.MeshStandardMaterial({
+            map: foliagePbr.map,
+            normalMap: foliagePbr.normalMap,
+            normalScale: new THREE.Vector2(0.75, 0.75),
+            roughnessMap: foliagePbr.roughnessMap,
+            color: deepLeafCol,
+            vertexColors: true,
+            roughness: 0.86,
+            metalness: 0.02,
+            side: THREE.DoubleSide,
+          }),
+        };
+        leafPairCache.set(leafColor, pair);
+      }
+      return pair;
+    },
+    getBlossomMat: (blossomColor) => {
+      let mat = blossomMatCache.get(blossomColor);
+      if (!mat) {
+        mat = new THREE.MeshStandardMaterial({
+          color: blossomColor,
+          vertexColors: true,
+          roughness: 0.58,
+        });
+        blossomMatCache.set(blossomColor, mat);
+      }
+      return mat;
+    },
+  };
+
   // 1. Build and position 10 specimen trees
   TREE_SPECS.forEach((spec) => {
-    const tree = buildTreeMesh(spec);
+    const tree = buildTreeMesh(spec, sharedTreeMats);
     const ty = getTerrainHeight(spec.x, spec.z);
     tree.position.set(spec.x, ty, spec.z);
     masterGroup.add(tree);
@@ -562,9 +970,40 @@ export function createTreesAndProps() {
     });
   });
 
+  // Shared bench materials across 4 benches
+  const benchStoneTex = typeof document !== 'undefined'
+    ? getStoneTileTextures('foyer', 2, 2)
+    : { map: null, normalMap: null, roughnessMap: null };
+  const benchTimberPair = typeof document !== 'undefined'
+    ? getTimberTextures('sandalwood', 2, 1)
+    : { map: null, normalMap: null, roughnessMap: null };
+  const sharedBenchMats = {
+    stoneMat: new THREE.MeshStandardMaterial({
+      map: benchStoneTex.map,
+      normalMap: benchStoneTex.normalMap,
+      normalScale: new THREE.Vector2(0.75, 0.75),
+      roughnessMap: benchStoneTex.roughnessMap,
+      color: '#D4C6B0',
+      roughness: 0.82,
+    }),
+    woodMat: new THREE.MeshStandardMaterial({
+      map: benchTimberPair.map,
+      normalMap: benchTimberPair.normalMap,
+      normalScale: new THREE.Vector2(0.65, 0.65),
+      roughnessMap: benchTimberPair.roughnessMap,
+      color: '#A8794D',
+      roughness: 0.68,
+    }),
+    bronzeMat: new THREE.MeshStandardMaterial({
+      color: '#2B241E',
+      metalness: 0.82,
+      roughness: 0.35,
+    }),
+  };
+
   // 2. Build and position 4 carved garden benches
   BENCH_CONFIGS.forEach((config) => {
-    const bench = buildBenchMesh(config);
+    const bench = buildBenchMesh(config, sharedBenchMats);
     const ty = getTerrainHeight(config.x, config.z);
     bench.position.set(config.x, ty, config.z);
     bench.rotation.y = config.rotY;
@@ -584,9 +1023,30 @@ export function createTreesAndProps() {
     });
   });
 
+  // Shared lantern materials & geometries across 10 pathway bollards
+  const lanternMetalPbr = typeof document !== 'undefined'
+    ? getBrushedMetalTextures('#2B241E', 2, 2)
+    : { normalMap: null, roughnessMap: null };
+  const sharedLantern = {
+    bronzeMat: new THREE.MeshStandardMaterial({
+      normalMap: lanternMetalPbr.normalMap,
+      normalScale: new THREE.Vector2(0.4, 0.4),
+      roughnessMap: lanternMetalPbr.roughnessMap,
+      color: '#2B241E',
+      metalness: 0.84,
+      roughness: 0.36,
+    }),
+    plinthGeo: new THREE.CylinderGeometry(0.088, 0.098, 0.04, 12),
+    baseGeo: new THREE.CylinderGeometry(0.06, 0.078, 0.22, 12),
+    coreGeo: new THREE.CylinderGeometry(0.048, 0.048, 0.14, 12),
+    strutGeo: new THREE.CylinderGeometry(0.006, 0.006, 0.15, 6),
+    capGeo: new THREE.ConeGeometry(0.095, 0.068, 12),
+    poolDiscGeo: new THREE.CircleGeometry(0.68, 16),
+  };
+
   // 3. Build and position 10 pathway bollard lanterns
-  PATH_LANTERN_CONFIGS.forEach((cfg) => {
-    const lantern = buildPathLantern(cfg);
+  PATH_LANTERN_CONFIGS.forEach((cfg, idx) => {
+    const lantern = buildPathLantern(cfg, idx, sharedLantern);
     const ty = 0.03; // path elevation is +0.03 m
     lantern.position.set(cfg.x, ty, cfg.z);
     masterGroup.add(lantern);
@@ -598,7 +1058,7 @@ export function createTreesAndProps() {
   masterGroup.add(decorativeProps);
 
   // 5. Garden shrubs
-  const shrubs = buildGardenShrubs();
+  const shrubs = buildGardenShrubs(foliagePbr);
   masterGroup.add(shrubs);
 
   // Day/Night luminaire emissive transition
