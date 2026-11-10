@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import '../harness/mockEnv.js';
-import { ROOMS } from '../../src/house/HouseArchitecture.js';
+import { ROOMS, DOORS } from '../../src/house/HouseArchitecture.js';
 import { gameStore } from '../../src/state/gameStore.js';
 import { getFabricTextures, getTimberTextures } from '../../src/assets/procedural/TextureGenerator.js';
+import { CommonAreasBuilder, buildCommonAreas } from '../../src/house/rooms/CommonAreas.js';
 
 describe('Tier 1: Interior Furnishings & Domestic Inventories', () => {
   // F20: Main Living Hall
@@ -471,6 +472,64 @@ describe('Tier 1: Interior Furnishings & Domestic Inventories', () => {
       expect(timberTex).toBeDefined();
       expect(timberTex.map).toBeDefined();
       expect(timberTex.map.isCanvasTexture).toBe(true);
+    });
+  });
+
+  // F32: Complete Interior Occupancy & Common Areas Regression
+  describe('F32 - Complete Interior Occupancy & Common Areas Regression', () => {
+    it('builds all 7 common-area zones including Upper Lounge, Walk-in Wardrobe, and East Gallery Hall', () => {
+      const common = buildCommonAreas();
+      const expectedGroups = [
+        'furniture-entrance-foyer',
+        'furniture-upper-gallery',
+        'furniture-upper-rear-lounge',
+        'furniture-walkin-wardrobe',
+        'furniture-east-gallery-hall',
+        'furniture-upper-linen',
+        'furniture-balconies',
+      ];
+      for (const name of expectedGroups) {
+        expect(common.getObjectByName(name)).toBeDefined();
+      }
+    });
+
+    it('registers interactive seats for Upper Rear Lounge and East Conservatory Alcove', () => {
+      const common = buildCommonAreas();
+      const seatIds = common.userData.seats.map((s) => s.id);
+      expect(seatIds).toContain('upper-lounge-sofa');
+      expect(seatIds).toContain('upper-lounge-armchair');
+      expect(seatIds).toContain('east-hall-settee');
+      expect(seatIds).toContain('foyer-shoe-bench');
+      expect(seatIds).toContain('gallery-reading-chair');
+    });
+
+    it('keeps East Corridor console and Walk-in Wardrobe cabinetry clear of door swings', () => {
+      const common = buildCommonAreas();
+      const consoleCol = common.userData.colliders.find((c) => c.id === 'collider-east-corridor-console');
+      const wardCol = common.userData.colliders.find((c) => c.id === 'collider-walkin-wardrobe');
+      const doorBed1 = DOORS.find((d) => d.id === 'door-bedroom-1');
+      const doorWard = DOORS.find((d) => d.id === 'door-wardrobe');
+
+      expect(consoleCol.max.z).toBeLessThan(doorBed1.z - doorBed1.width);
+      expect(wardCol.min.z).toBeGreaterThan(doorWard.z + 1.5);
+    });
+
+    it('places Balconies and Upper Linen shelves strictly within their room footprints', () => {
+      const common = buildCommonAreas();
+      const balconyGroup = common.getObjectByName('furniture-balconies');
+      const linenGroup = common.getObjectByName('furniture-upper-linen');
+      expect(balconyGroup.children.length).toBeGreaterThanOrEqual(4);
+      expect(linenGroup.children.length).toBeGreaterThan(5);
+    });
+
+    it('positions CommonAreas framed artwork canvases cleanly proud of the chamfered frame', () => {
+      const builder = new CommonAreasBuilder();
+      const artGroup = builder.createFramedArt(builder.materials.artBotanical, 0.96, 1.1);
+      const [frameMesh, canvasMesh] = artGroup.children;
+      frameMesh.geometry.computeBoundingBox();
+      const frameMaxZ = frameMesh.geometry.boundingBox.max.z;
+      expect(canvasMesh.position.z).toBeGreaterThan(frameMaxZ + 0.002);
+      expect(canvasMesh.material.map).toBeDefined();
     });
   });
 });

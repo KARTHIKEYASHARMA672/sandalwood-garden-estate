@@ -1,14 +1,18 @@
 import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
 import '../harness/mockEnv.js';
 import {
   WORLD_DIMENSIONS,
   ROOMS,
   WINDOWS,
   DOORS,
+  PARTITIONS,
   STAIRCASE,
   resolveGroundHeightAt,
   START_POSITION,
 } from '../../src/house/HouseArchitecture.js';
+import { buildHouse } from '../../src/house/HouseMeshBuilder.js';
+import { ASSET_MANIFEST } from '../../src/assets/procedural/AssetManifest.js';
 
 describe('Tier 1: Architecture & Structural Specifications', () => {
   // F02: Coordinate & Spatial Setup
@@ -362,6 +366,101 @@ describe('Tier 1: Architecture & Structural Specifications', () => {
     it('ensures stair hall has continuous open volume to upper ceiling (7.05m)', () => {
       const stairHall = ROOMS.find((r) => r.id === 'stair-hall');
       expect(stairHall.ceilingY).toBe(7.05);
+    });
+  });
+
+  // Structural Geometry, Enclosures & Asset Manifest Verification
+  describe('Structural Geometry, Enclosures & Asset Manifest Verification', () => {
+    it('builds punched ExtrudeGeometry walls with outward+inward material groups and zero degenerate triangles', () => {
+      const scene = new THREE.Scene();
+      const house = buildHouse({ scene });
+      const frontWall = house.getObjectByName('wall-front-ground');
+      expect(frontWall).toBeDefined();
+
+      const mesh = frontWall.children.find((c) => c.isMesh);
+      expect(mesh).toBeDefined();
+      expect(Array.isArray(mesh.material)).toBe(true);
+      expect(mesh.geometry.groups.length).toBe(2);
+      expect(mesh.geometry.groups[0].count).toBeGreaterThan(0);
+      expect(mesh.geometry.groups[1].count).toBeGreaterThan(0);
+
+      const pos = mesh.geometry.getAttribute('position');
+      const v0 = new THREE.Vector3();
+      const v1 = new THREE.Vector3();
+      const v2 = new THREE.Vector3();
+      const e1 = new THREE.Vector3();
+      const e2 = new THREE.Vector3();
+      const cross = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i += 3) {
+        v0.fromBufferAttribute(pos, i);
+        v1.fromBufferAttribute(pos, i + 1);
+        v2.fromBufferAttribute(pos, i + 2);
+        e1.subVectors(v1, v0);
+        e2.subVectors(v2, v0);
+        cross.crossVectors(e1, e2);
+        expect(cross.lengthSq()).toBeGreaterThan(1e-12);
+      }
+    });
+
+    it('encloses upper Bathroom 2 and Walk-in Wardrobe flush at Z = 7.25m and X = -7.175m', () => {
+      const bath2 = ROOMS.find((r) => r.id === 'bathroom-2');
+      const wardrobe = ROOMS.find((r) => r.id === 'walkin-wardrobe');
+      const bathNorth = PARTITIONS.find((p) => p.id === 'part-upper-bath2-north');
+      const wardEast = PARTITIONS.find((p) => p.id === 'part-upper-wardrobe-east');
+
+      expect(bathNorth).toBeDefined();
+      expect(wardEast).toBeDefined();
+      expect(bath2.maxZ).toBe(7.25);
+      expect(wardrobe.maxZ).toBe(7.25);
+      expect(bathNorth.z - bathNorth.thickness * 0.5).toBeCloseTo(7.25, 3);
+      expect(wardEast.x).toBeCloseTo(-7.175, 3);
+    });
+
+    it('builds dual-sided staircase rails and east mezzanine landing guardrail collider', () => {
+      const scene = new THREE.Scene();
+      const house = buildHouse({ scene });
+      const stairs = house.getObjectByName('central-staircase');
+      expect(stairs).toBeDefined();
+      expect(stairs.children.length).toBeGreaterThan(0);
+
+      const eastRail = house.userData.colliders.find((c) => c.id === 'rail-gallery-stair-east');
+      expect(eastRail).toBeDefined();
+      expect(eastRail.minX).toBeCloseTo(2.99, 2);
+      expect(eastRail.maxX).toBeCloseTo(3.95, 2);
+    });
+
+    it('keeps perpendicular Laundry & Storage partition intersections non-overlapping', () => {
+      const lNorth = PARTITIONS.find((p) => p.id === 'part-ground-laundry-north');
+      const sNorth = PARTITIONS.find((p) => p.id === 'part-ground-storage-north');
+      const lWest = PARTITIONS.find((p) => p.id === 'part-ground-laundry-west');
+
+      expect(lNorth.minX).toBeGreaterThanOrEqual(lWest.x + lWest.thickness * 0.5);
+      expect(sNorth.maxX).toBeLessThanOrEqual(lWest.x - lWest.thickness * 0.5);
+    });
+
+    it('wraps partition baseboards around outer Laundry L-corners without Z-fighting', () => {
+      const scene = new THREE.Scene();
+      const house = buildHouse({ scene });
+      const partitionsGroup = house.getObjectByName('interior-partitions');
+      expect(partitionsGroup).toBeDefined();
+
+      // Check East Laundry north-wall right skirt segment reaches across laundry-east corner (>= 7.31m)
+      const rightSkirt = partitionsGroup.children.find((m) => {
+        if (!m.isMesh || !m.geometry?.parameters) return false;
+        const p = m.geometry.parameters;
+        return Math.abs(m.position.z - -6.275) < 0.01 && Math.abs(m.position.y - (0.3 + 0.055)) < 0.01 && m.position.x > 6.5 && p.width > 0.5;
+      });
+      expect(rightSkirt).toBeDefined();
+      expect(rightSkirt.position.x + rightSkirt.geometry.parameters.width * 0.5).toBeGreaterThanOrEqual(7.309);
+    });
+
+    it('verifies ASSET_MANIFEST catalogs only original procedural textures, models, and audio', () => {
+      expect(ASSET_MANIFEST.textures.length).toBeGreaterThanOrEqual(15);
+      expect(ASSET_MANIFEST.models.length).toBe(6);
+      expect(ASSET_MANIFEST.audio.length).toBe(6);
+      expect(
+        ASSET_MANIFEST.textures.every((t) => t.license.includes('Original'))
+      ).toBe(true);
     });
   });
 });
