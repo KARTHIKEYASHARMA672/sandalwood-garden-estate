@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { getTerrainHeight } from '../house/HouseArchitecture.js';
 import { getSoilTexture, getTimberTextures } from '../assets/procedural/TextureGenerator.js';
 
@@ -223,336 +224,394 @@ export const FLOWER_BED_LAYOUTS = [
 ];
 
 /**
- * Creates curved petal geometry with gentle parabolic curvature (PRD Section 4.3).
+ * Builds a delicate parabolic curved botanical petal ribbon (y in [0..length], base anchored at 0)
+ * using 18 triangles per petal instead of heavy beveled ExtrudeGeometry.
  */
-function createCurvedPetalGeometry(length, width, thickness = 0.002, curveDepth = 0.008) {
-  const shape = new THREE.Shape();
-  shape.moveTo(0, 0);
-  shape.quadraticCurveTo(width * 0.5, length * 0.4, width * 0.4, length * 0.85);
-  shape.quadraticCurveTo(width * 0.2, length, 0, length);
-  shape.quadraticCurveTo(-width * 0.2, length, -width * 0.4, length * 0.85);
-  shape.quadraticCurveTo(-width * 0.5, length * 0.4, 0, 0);
-
-  const extrudeSettings = {
-    steps: 2,
-    depth: thickness,
-    bevelEnabled: true,
-    bevelSegments: 2,
-    bevelSize: 0.0008,
-    bevelThickness: 0.0008,
-  };
-  const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-  geo.center();
-
-  // Apply subtle parabolic longitudinal curve so petals curve gently upwards
+function createCurvedPetalGeometry(length, width, curveDepth = 0.008) {
+  const segX = 2;
+  const segY = 3;
+  const geo = new THREE.PlaneGeometry(width, length, segX, segY);
   const pos = geo.getAttribute('position');
   for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    const normY = (y + length * 0.5) / length;
-    const curveZ = Math.sin(normY * Math.PI * 0.8) * curveDepth;
-    pos.setZ(i, pos.getZ(i) + curveZ);
+    const rawX = pos.getX(i);
+    const rawY = pos.getY(i) + length * 0.5; // shift base to Y = 0
+    const v = Math.max(0, Math.min(1, rawY / Math.max(0.001, length)));
+    const uNorm = Math.abs(rawX) / Math.max(0.0005, width * 0.5);
+
+    // Taper smoothly from narrow pedicel attachment to lush rounded upper lobe
+    const widthEnvelope =
+      v < 0.25
+        ? 0.25 + (v / 0.25) * 0.55
+        : v < 0.72
+          ? 0.8 + Math.sin(((v - 0.25) / 0.47) * Math.PI) * 0.24
+          : Math.max(0.08, Math.cos(((v - 0.72) / 0.28) * Math.PI * 0.48) * 0.82);
+
+    const cupZ = Math.sin(v * Math.PI * 0.85) * curveDepth + (1 - uNorm * uNorm) * width * 0.14;
+    pos.setXYZ(i, rawX * widthEnvelope, rawY, cupZ);
   }
   geo.computeVertexNormals();
   return geo;
 }
 
 /**
- * Procedural model builders for each of the 7 flower varieties.
+ * Attaches coherent GLSL spatial breeze sway (2 - 4 deg angular bend anchored at stem root).
  */
-function buildFlowerVarietyModel(varietyId) {
+function attachFlowerWindShader(material, uniformTime, maxHeight) {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = uniformTime;
+    shader.uniforms.uMaxH = { value: maxHeight };
+    shader.vertexShader = `uniform float uTime;\nuniform float uMaxH;\nattribute float aPhase;\n${shader.vertexShader}`;
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       float stemFrac = clamp(position.y / max(0.08, uMaxH), 0.0, 1.0);
+       #ifdef USE_INSTANCING
+         vec4 instOrigin = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+         float windWave = (instOrigin.x * 0.12 + instOrigin.z * 0.16) + uTime * 1.25 + aPhase;
+         // World sway deltas (~3 deg avg bend) projected into local instance XZ frame
+         float wx = sin(windWave) * 0.052;
+         float wz = cos(windWave * 0.85) * 0.028;
+         float scaleSq = max(0.01, dot(instanceMatrix[0].xz, instanceMatrix[0].xz));
+         float bendFactor = position.y * (0.35 + 0.65 * stemFrac) / scaleSq;
+         transformed.x += dot(vec2(wx, wz), instanceMatrix[0].xz) * bendFactor;
+         transformed.z += dot(vec2(wx, wz), instanceMatrix[2].xz) * bendFactor;
+       #endif
+      `
+    );
+  };
+  return material;
+}
+
+/**
+ * Merges static sibling meshes inside `container` that share a material into single draw calls.
+ */
+function consolidateStaticGroup(container) {
+  const buckets = new Map();
+  const children = [...container.children];
+  for (const child of children) {
+    if (!child.isMesh || Array.isArray(child.material)) continue;
+    let geo = child.geometry.clone();
+    if (geo.index !== null) geo = geo.toNonIndexed();
+    for (const key of Object.keys(geo.attributes)) {
+      if (key !== 'position' && key !== 'normal' && key !== 'uv') {
+        geo.deleteAttribute(key);
+      }
+    }
+    child.updateMatrix();
+    geo.applyMatrix4(child.matrix);
+    let list = buckets.get(child.material);
+    if (!list) {
+      list = [];
+      buckets.set(child.material, list);
+    }
+    list.push(geo);
+    container.remove(child);
+  }
+  for (const [mat, geos] of buckets.entries()) {
+    if (!geos.length) continue;
+    const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    container.add(mesh);
+  }
+}
+
+/**
+ * Extracts merged per-material geometry layers across a hierarchical template Group in template root coords.
+ * Returns array of `{ geometry, material, castShadow }` ready for GPU InstancedMesh batching.
+ */
+function bakeTemplateLayers(templateGroup, uniformTime, maxHeight) {
+  templateGroup.updateMatrixWorld(true);
+  const layers = new Map();
+  const stemMaterialsSeen = new Set();
+
+  templateGroup.traverse((child) => {
+    if (!child.isMesh) return;
+    let geo = child.geometry.clone();
+    if (geo.index !== null) geo = geo.toNonIndexed();
+    for (const key of Object.keys(geo.attributes)) {
+      if (key !== 'position' && key !== 'normal' && key !== 'uv') {
+        geo.deleteAttribute(key);
+      }
+    }
+    geo.applyMatrix4(child.matrixWorld);
+
+    let bucket = layers.get(child.material);
+    if (!bucket) {
+      bucket = { material: child.material, geos: [], castShadow: false };
+      layers.set(child.material, bucket);
+    }
+    if (child.castShadow) bucket.castShadow = true;
+    bucket.geos.push(geo);
+  });
+
+  const baked = [];
+  for (const { material, geos, castShadow } of layers.values()) {
+    const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+    geos.forEach((g) => g.dispose());
+    if (!stemMaterialsSeen.has(material)) {
+      attachFlowerWindShader(material, uniformTime, maxHeight);
+      stemMaterialsSeen.add(material);
+    }
+    baked.push({ geometry: merged, material, castShadow });
+  }
+  return baked;
+}
+
+/**
+ * Procedural model builders for each of the 7 flower varieties returning baked GPU instancing layers.
+ */
+function buildFlowerVarietyLayers(varietyId, colorVariantIdx, uniformTime) {
   const spec = FLOWER_VARIETIES[varietyId];
   const flowerGroup = new THREE.Group();
-  flowerGroup.name = `flower-template-${varietyId}`;
+  flowerGroup.name = `flower-template-${varietyId}-${colorVariantIdx}`;
 
-  // Shared stem material
   const stemMat = new THREE.MeshStandardMaterial({
     color: spec.stemColor,
     roughness: 0.72,
-    metalness: 0.04,
+    metalness: 0.03,
+    side: THREE.DoubleSide,
   });
 
   const avgHeight = (spec.minHeight + spec.maxHeight) * 0.5;
+  const pickPetalColor = (idx = 0) =>
+    spec.petalColors[(colorVariantIdx + idx) % spec.petalColors.length];
 
   if (varietyId === 'daisy') {
-    // 1. Stem
-    const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.3, avgHeight, 5);
+    const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.35, avgHeight, 5);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
 
-    // Leaves on stem
-    const leafGeo = new THREE.ConeGeometry(0.012, 0.06, 4);
-    leafGeo.rotateZ(0.6);
-    leafGeo.translate(0.015, avgHeight * 0.4, 0);
-    const leaf = new THREE.Mesh(leafGeo, stemMat);
-    flowerGroup.add(leaf);
+    for (let l = 0; l < 4; l++) {
+      const ang = (l / 4) * Math.PI * 2 + 0.3;
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.09, 4), stemMat);
+      leaf.position.set(Math.cos(ang) * 0.022, avgHeight * (0.14 + (l % 2) * 0.14), Math.sin(ang) * 0.022);
+      leaf.rotation.z = Math.cos(ang) * -0.78;
+      leaf.rotation.x = Math.sin(ang) * 0.78;
+      flowerGroup.add(leaf);
+    }
 
-    // Head group (anchored at top of stem)
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight;
 
-    // Center disc
-    const centerMat = new THREE.MeshStandardMaterial({
-      color: spec.centerColor,
-      roughness: 0.85,
-    });
-    const centerGeo = new THREE.CylinderGeometry(0.018, 0.015, 0.008, 8);
-    const centerMesh = new THREE.Mesh(centerGeo, centerMat);
-    head.add(centerMesh);
+    const centerMat = new THREE.MeshStandardMaterial({ color: spec.centerColor, roughness: 0.85 });
+    head.add(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.015, 0.01, 10), centerMat));
 
-    // 12 Ivory petals radiating outward
     const petalMat = new THREE.MeshStandardMaterial({
-      color: spec.petalColors[0],
-      roughness: 0.65,
+      color: pickPetalColor(0),
+      roughness: 0.54,
       side: THREE.DoubleSide,
     });
-    const petalGeo = createCurvedPetalGeometry(0.035, 0.012, 0.0018, 0.005);
+    const petalGeo = createCurvedPetalGeometry(0.038, 0.013, 0.0055);
     petalGeo.rotateX(Math.PI / 2);
 
     for (let p = 0; p < spec.petalCount; p++) {
       const angle = (p / spec.petalCount) * Math.PI * 2 + (p % 2 === 0 ? 0.03 : -0.03);
       const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(angle) * 0.02, 0.002, Math.sin(angle) * 0.02);
-      petal.rotation.y = -angle;
-      petal.rotation.x = 0.12; // gentle upward tilt
+      petal.position.set(Math.cos(angle) * 0.014, 0.002, Math.sin(angle) * 0.014);
+      petal.rotation.y = Math.PI / 2 - angle;
+      petal.rotation.x = 0.14;
       head.add(petal);
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   } else if (varietyId === 'rose') {
-    // 2. Rose with layered curved petals
     const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.4, avgHeight, 6);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
 
-    // Sparse small thorns on stem
     for (let t = 0; t < 3; t++) {
-      const thorn = new THREE.Mesh(new THREE.ConeGeometry(0.003, 0.008, 3), stemMat);
-      thorn.position.set(0.004, avgHeight * (0.25 + t * 0.2), 0);
-      thorn.rotation.z = -1.2;
-      flowerGroup.add(thorn);
+      const ang = t * 2.1;
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.085, 4), stemMat);
+      leaf.position.set(Math.cos(ang) * 0.024, avgHeight * (0.28 + t * 0.18), Math.sin(ang) * 0.024);
+      leaf.rotation.z = Math.cos(ang) * -0.82;
+      leaf.rotation.x = Math.sin(ang) * 0.82;
+      flowerGroup.add(leaf);
     }
 
+    const calyx = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.022, 5), stemMat);
+    calyx.rotation.x = Math.PI;
+    calyx.position.y = avgHeight - 0.006;
+    flowerGroup.add(calyx);
+
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight;
 
     const roseMatOuter = new THREE.MeshStandardMaterial({
-      color: spec.petalColors[0],
-      roughness: 0.68,
+      color: pickPetalColor(0),
+      roughness: 0.58,
       side: THREE.DoubleSide,
     });
     const roseMatInner = new THREE.MeshStandardMaterial({
-      color: spec.petalColors[1] || spec.petalColors[0],
-      roughness: 0.72,
+      color: pickPetalColor(1),
+      roughness: 0.64,
       side: THREE.DoubleSide,
     });
-    const centerMat = new THREE.MeshStandardMaterial({
-      color: spec.centerColor,
-      roughness: 0.85,
-    });
+    const centerMat = new THREE.MeshStandardMaterial({ color: spec.centerColor, roughness: 0.82 });
 
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 6), centerMat);
-    core.scale.set(1, 0.8, 1);
+    core.scale.set(1, 0.85, 1);
     head.add(core);
 
-    const petalGeo = createCurvedPetalGeometry(0.036, 0.024, 0.002, 0.01);
+    const petalGeo = createCurvedPetalGeometry(0.04, 0.028, 0.01);
     petalGeo.rotateX(Math.PI / 2);
 
-    // Inner ring (8 petals)
     for (let p = 0; p < 8; p++) {
       const angle = (p / 8) * Math.PI * 2;
       const petal = new THREE.Mesh(petalGeo, roseMatInner);
       petal.scale.set(0.7, 0.7, 0.7);
-      petal.position.set(Math.cos(angle) * 0.012, 0.005, Math.sin(angle) * 0.012);
-      petal.rotation.y = -angle;
-      petal.rotation.x = 0.55;
+      petal.position.set(Math.cos(angle) * 0.008, 0.004, Math.sin(angle) * 0.008);
+      petal.rotation.y = Math.PI / 2 - angle;
+      petal.rotation.x = -0.68;
       head.add(petal);
     }
 
-    // Outer ring (16 petals)
-    for (let p = 0; p < 16; p++) {
-      const angle = (p / 16) * Math.PI * 2 + 0.2;
+    for (let p = 0; p < 14; p++) {
+      const angle = (p / 14) * Math.PI * 2 + 0.2;
       const petal = new THREE.Mesh(petalGeo, roseMatOuter);
-      petal.position.set(Math.cos(angle) * 0.024, 0.002, Math.sin(angle) * 0.024);
-      petal.rotation.y = -angle;
-      petal.rotation.x = 0.28;
+      petal.position.set(Math.cos(angle) * 0.012, 0.001, Math.sin(angle) * 0.012);
+      petal.rotation.y = Math.PI / 2 - angle;
+      petal.rotation.x = -0.34;
       head.add(petal);
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   } else if (varietyId === 'tulip') {
-    // 3. Tulip with 6 cupped upright petals
-    const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.3, avgHeight, 5);
+    const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.35, avgHeight, 5);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
 
-    // Broad upright leaf
-    const leafGeo = new THREE.BoxGeometry(0.02, 0.16, 0.003);
-    leafGeo.translate(0, 0.08, 0);
-    const leaf = new THREE.Mesh(leafGeo, stemMat);
-    leaf.position.set(0.01, avgHeight * 0.2, 0);
-    leaf.rotation.z = -0.25;
-    flowerGroup.add(leaf);
+    const leafGeo = new THREE.ConeGeometry(0.022, 0.2, 4);
+    leafGeo.scale(1.2, 1, 0.35);
+    for (const side of [-1, 1]) {
+      const leaf = new THREE.Mesh(leafGeo, stemMat);
+      leaf.position.set(side * 0.016, avgHeight * 0.28, 0);
+      leaf.rotation.z = side * -0.26;
+      flowerGroup.add(leaf);
+    }
 
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight;
 
-    const tulipColor = spec.petalColors[Math.floor(Math.random() * spec.petalColors.length)];
     const tulipMat = new THREE.MeshStandardMaterial({
-      color: tulipColor,
-      roughness: 0.6,
+      color: pickPetalColor(0),
+      roughness: 0.52,
       side: THREE.DoubleSide,
     });
 
-    const petalGeo = createCurvedPetalGeometry(0.065, 0.032, 0.002, 0.014);
-    petalGeo.rotateX(Math.PI * 0.45);
+    const petalGeo = createCurvedPetalGeometry(0.068, 0.036, 0.014);
+    petalGeo.rotateX(Math.PI / 2);
 
     for (let p = 0; p < 6; p++) {
       const angle = (p / 6) * Math.PI * 2;
       const petal = new THREE.Mesh(petalGeo, tulipMat);
       const isInner = p % 2 === 0;
-      const r = isInner ? 0.015 : 0.022;
-      petal.position.set(Math.cos(angle) * r, 0.02, Math.sin(angle) * r);
-      petal.rotation.y = -angle;
-      petal.rotation.x = isInner ? 0.75 : 0.65;
+      const r = isInner ? 0.01 : 0.015;
+      petal.position.set(Math.cos(angle) * r, 0.0, Math.sin(angle) * r);
+      petal.rotation.y = Math.PI / 2 - angle;
+      petal.rotation.x = isInner ? -1.08 : -0.94;
       head.add(petal);
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   } else if (varietyId === 'sunflower') {
-    // 4. Tall Sunflower with large brown seed disc and 24 golden yellow ray petals
     const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.5, avgHeight, 6);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
 
-    // 4 broad leaves along stem
-    for (let l = 0; l < 4; l++) {
-      const leafGeo = new THREE.ConeGeometry(0.045, 0.16, 4);
+    for (let l = 0; l < 5; l++) {
+      const leafGeo = new THREE.ConeGeometry(0.048, 0.18, 4);
       leafGeo.rotateX(Math.PI / 2);
       const leaf = new THREE.Mesh(leafGeo, stemMat);
-      const ang = l * 1.7;
-      leaf.position.set(Math.cos(ang) * 0.03, avgHeight * (0.2 + l * 0.18), Math.sin(ang) * 0.03);
+      const ang = l * 1.65;
+      leaf.position.set(Math.cos(ang) * 0.032, avgHeight * (0.18 + l * 0.15), Math.sin(ang) * 0.032);
       leaf.rotation.y = ang;
-      leaf.rotation.x = 0.4;
+      leaf.rotation.x = 0.42;
       flowerGroup.add(leaf);
     }
 
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight;
-    head.rotation.x = 0.25; // sunflower tilts gently toward the sun
+    head.rotation.x = 0.25;
 
-    // Large dark brown center disc
-    const centerMat = new THREE.MeshStandardMaterial({
-      color: spec.centerColor,
-      roughness: 0.92,
-    });
-    const centerGeo = new THREE.CylinderGeometry(0.065, 0.06, 0.02, 12);
+    const centerMat = new THREE.MeshStandardMaterial({ color: spec.centerColor, roughness: 0.92 });
+    const centerGeo = new THREE.CylinderGeometry(0.068, 0.062, 0.022, 12);
     centerGeo.rotateX(Math.PI / 2);
-    const centerMesh = new THREE.Mesh(centerGeo, centerMat);
-    head.add(centerMesh);
+    head.add(new THREE.Mesh(centerGeo, centerMat));
 
-    // 24 Ray petals
     const petalMat = new THREE.MeshStandardMaterial({
-      color: spec.petalColors[0],
-      roughness: 0.58,
+      color: pickPetalColor(0),
+      roughness: 0.54,
       side: THREE.DoubleSide,
     });
-    const petalGeo = createCurvedPetalGeometry(0.085, 0.022, 0.0025, 0.008);
-    petalGeo.rotateX(Math.PI / 2);
+    const petalGeo = createCurvedPetalGeometry(0.095, 0.026, 0.008);
 
     for (let p = 0; p < spec.petalCount; p++) {
       const angle = (p / spec.petalCount) * Math.PI * 2;
       const petal = new THREE.Mesh(petalGeo, petalMat);
-      petal.position.set(Math.cos(angle) * 0.07, Math.sin(angle) * 0.07, 0.005);
+      petal.position.set(Math.cos(angle) * 0.056, Math.sin(angle) * 0.056, 0.005);
       petal.rotation.z = angle - Math.PI / 2;
-      petal.rotation.y = 0.1;
+      petal.rotation.x = -0.14;
       head.add(petal);
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   } else if (varietyId === 'lavender') {
-    // 5. Lavender with dense floret spikes
     const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.2, avgHeight, 4);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
 
-    // Slender leaves at base
-    for (let l = 0; l < 4; l++) {
-      const leafGeo = new THREE.BoxGeometry(0.006, 0.08, 0.002);
-      leafGeo.translate(0, 0.04, 0);
+    for (let l = 0; l < 6; l++) {
+      const leafGeo = new THREE.ConeGeometry(0.005, 0.1, 3);
+      leafGeo.translate(0, 0.05, 0);
       const leaf = new THREE.Mesh(leafGeo, stemMat);
-      leaf.position.set(0, avgHeight * 0.15, 0);
-      leaf.rotation.y = l * 1.57;
-      leaf.rotation.z = 0.45;
+      leaf.position.set(0, avgHeight * 0.12, 0);
+      leaf.rotation.y = (l / 6) * Math.PI * 2;
+      leaf.rotation.z = 0.48;
       flowerGroup.add(leaf);
     }
 
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight * 0.65;
 
-    const floretMat = new THREE.MeshStandardMaterial({
-      color: spec.floretColor,
-      roughness: 0.75,
-    });
-
-    // Tiered floret rings along spike
+    const floretMat = new THREE.MeshStandardMaterial({ color: spec.floretColor, roughness: 0.7 });
     const spikeH = avgHeight * 0.35;
     const tiers = 7;
+    const floretGeo = new THREE.SphereGeometry(0.0075, 4, 4);
+    floretGeo.scale(1, 1.45, 1);
     for (let t = 0; t < tiers; t++) {
       const ty = (t / tiers) * spikeH;
-      const r = 0.016 * (1.0 - t * 0.08);
-      const floretsInTier = 4;
-      for (let f = 0; f < floretsInTier; f++) {
-        const ang = (f / floretsInTier) * Math.PI * 2 + t * 0.6;
-        const floret = new THREE.Mesh(new THREE.SphereGeometry(0.007, 4, 4), floretMat);
-        floret.scale.set(1, 1.4, 1);
+      const r = 0.017 * (1.0 - t * 0.08);
+      for (let f = 0; f < 4; f++) {
+        const ang = (f / 4) * Math.PI * 2 + t * 0.6;
+        const floret = new THREE.Mesh(floretGeo, floretMat);
         floret.position.set(Math.cos(ang) * r, ty, Math.sin(ang) * r);
         head.add(floret);
       }
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   } else if (varietyId === 'hydrangea') {
-    // 6. Hydrangea with domed spherical head of small florets
     const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.3, avgHeight, 5);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
 
-    // 2 Broad serrated leaves
-    const leafGeo = new THREE.ConeGeometry(0.04, 0.12, 4);
-    leafGeo.rotateZ(0.7);
-    leafGeo.translate(0.04, avgHeight * 0.4, 0);
-    flowerGroup.add(new THREE.Mesh(leafGeo, stemMat));
+    for (let l = 0; l < 3; l++) {
+      const ang = (l / 3) * Math.PI * 2 + 0.5;
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.042, 0.14, 4), stemMat);
+      leaf.position.set(Math.cos(ang) * 0.04, avgHeight * (0.28 + l * 0.08), Math.sin(ang) * 0.04);
+      leaf.rotation.z = Math.cos(ang) * -0.8;
+      leaf.rotation.x = Math.sin(ang) * 0.8;
+      flowerGroup.add(leaf);
+    }
 
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight;
 
-    const col = spec.petalColors[Math.floor(Math.random() * spec.petalColors.length)];
-    const floretMat = new THREE.MeshStandardMaterial({
-      color: col,
-      roughness: 0.65,
-    });
-
-    // Domed florets cluster
-    const clusterGeo = new THREE.SphereGeometry(0.012, 4, 4);
-    const radius = 0.065;
+    const floretMat = new THREE.MeshStandardMaterial({ color: pickPetalColor(0), roughness: 0.6 });
+    const clusterGeo = new THREE.SphereGeometry(0.014, 5, 4);
+    const radius = 0.068;
     for (let i = 0; i < spec.floretCount; i++) {
-      // Golden spiral distribution over upper hemisphere
       const phi = Math.acos(1 - (i / spec.floretCount) * 0.85);
       const theta = Math.PI * (1 + Math.sqrt(5)) * i;
       const x = radius * Math.sin(phi) * Math.cos(theta);
-      const y = radius * Math.cos(phi) * 0.7;
+      const y = radius * Math.cos(phi) * 0.72;
       const z = radius * Math.sin(phi) * Math.sin(theta);
 
       const floret = new THREE.Mesh(clusterGeo, floretMat);
@@ -560,155 +619,184 @@ function buildFlowerVarietyModel(varietyId) {
       head.add(floret);
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   } else {
-    // 7. Marigold with dense ruffled petals
-    const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.3, avgHeight, 5);
+    // Marigold with layered curved pompom petals
+    const stemGeo = new THREE.CylinderGeometry(spec.stemRadius, spec.stemRadius * 1.35, avgHeight, 5);
     stemGeo.translate(0, avgHeight * 0.5, 0);
-    const stem = new THREE.Mesh(stemGeo, stemMat);
-    flowerGroup.add(stem);
+    flowerGroup.add(new THREE.Mesh(stemGeo, stemMat));
+
+    for (let l = 0; l < 4; l++) {
+      const ang = (l / 4) * Math.PI * 2;
+      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.016, 0.095, 4), stemMat);
+      leaf.position.set(Math.cos(ang) * 0.025, avgHeight * 0.25, Math.sin(ang) * 0.025);
+      leaf.rotation.z = Math.cos(ang) * -0.82;
+      leaf.rotation.x = Math.sin(ang) * 0.82;
+      flowerGroup.add(leaf);
+    }
 
     const head = new THREE.Group();
-    head.name = 'flower-head';
     head.position.y = avgHeight;
 
     const marigoldMat = new THREE.MeshStandardMaterial({
-      color: spec.petalColors[0],
-      roughness: 0.65,
+      color: pickPetalColor(0),
+      roughness: 0.58,
+      side: THREE.DoubleSide,
     });
-    const coreMat = new THREE.MeshStandardMaterial({
-      color: spec.centerColor,
-      roughness: 0.8,
-    });
+    const coreMat = new THREE.MeshStandardMaterial({ color: spec.centerColor, roughness: 0.8 });
+    head.add(new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 5), coreMat));
 
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 5), coreMat);
-    head.add(core);
-
-    const petalGeo = new THREE.BoxGeometry(0.012, 0.024, 0.002);
-    petalGeo.translate(0, 0.012, 0);
-
-    for (let p = 0; p < spec.petalCount; p++) {
-      const angle = (p / spec.petalCount) * Math.PI * 4;
-      const r = 0.012 + (p / spec.petalCount) * 0.022;
+    const petalGeo = createCurvedPetalGeometry(0.028, 0.014, 0.005);
+    petalGeo.rotateX(Math.PI / 2);
+    for (let p = 0; p < 24; p++) {
+      const angle = (p / 24) * Math.PI * 4;
+      const ring = p / 24;
+      const r = 0.008 + ring * 0.018;
       const petal = new THREE.Mesh(petalGeo, marigoldMat);
-      petal.position.set(Math.cos(angle) * r, (p / spec.petalCount) * 0.015, Math.sin(angle) * r);
-      petal.rotation.y = -angle;
-      petal.rotation.x = 0.4 + (p % 3) * 0.15;
+      petal.position.set(Math.cos(angle) * r, (1 - ring) * 0.014, Math.sin(angle) * r);
+      petal.rotation.y = Math.PI / 2 - angle;
+      petal.rotation.x = -0.3 - (1 - ring) * 0.65;
       head.add(petal);
     }
     flowerGroup.add(head);
-    flowerGroup.userData.head = head;
   }
 
-  // Optimize templates: enable shadow casting for larger varieties
   flowerGroup.traverse((child) => {
     if (child.isMesh) {
-      child.castShadow = avgHeight > 0.45;
+      child.castShadow = avgHeight > 0.48;
       child.receiveShadow = true;
     }
   });
 
-  return flowerGroup;
+  return bakeTemplateLayers(flowerGroup, uniformTime, spec.maxHeight);
 }
 
 /**
- * Creates the rounded timber border frame and dark mounded soil for a single flower bed.
+ * Creates the mitered timber border frame, corner stakes, and dark mounded soil for a flower bed.
  */
-function createBedMoundAndBorder(bedLayout) {
+function createBedMoundAndBorder(bedLayout, shared) {
   const group = new THREE.Group();
   group.name = `bed-mound-${bedLayout.id}`;
 
   const w = bedLayout.width;
   const d = bedLayout.depth;
-  const moundH = 0.14;
+  const moundH = 0.085;
 
-  // 1. Dark soil mound (elliptical dome)
-  const soilGeo = new THREE.CylinderGeometry(w * 0.46, w * 0.5, moundH, 24, 2);
-  soilGeo.scale(1, 1, d / w);
+  // Rectangular mound that fits cleanly inside all 4 mitered corners with gentle crown swell
+  const soilW = w - 0.08;
+  const soilD = d - 0.08;
+  const soilGeo = new THREE.BoxGeometry(soilW, moundH, soilD, 10, 1, 6);
+  const sPos = soilGeo.getAttribute('position');
+  for (let i = 0; i < sPos.count; i++) {
+    const sy = sPos.getY(i);
+    if (sy > 0) {
+      const nx = sPos.getX(i) / (soilW * 0.5);
+      const nz = sPos.getZ(i) / (soilD * 0.5);
+      const radial = Math.max(0, 1 - (nx * nx * 0.72 + nz * nz * 0.72));
+      sPos.setY(i, sy + radial * 0.068);
+    }
+  }
   soilGeo.translate(0, moundH * 0.5, 0);
+  soilGeo.computeVertexNormals();
 
-  const soilTex = typeof document !== 'undefined' ? getSoilTexture(3, 2) : null;
-  const soilMat = new THREE.MeshStandardMaterial({
-    map: soilTex,
-    color: '#34261C',
-    roughness: 0.95,
-    metalness: 0.0,
-  });
-  const soilMesh = new THREE.Mesh(soilGeo, soilMat);
+  const soilMesh = new THREE.Mesh(soilGeo, shared.soilMat);
   soilMesh.receiveShadow = true;
   group.add(soilMesh);
 
-  // 2. Sandalwood / dark timber border (0.12 m wide, 0.15 m high timber edging)
   const borderH = 0.15;
-  const timberPair = typeof document !== 'undefined'
-    ? getTimberTextures('sandalwood', 4, 1)
-    : { map: null, bumpMap: null };
-  const borderMat = new THREE.MeshStandardMaterial({
-    map: timberPair.map,
-    bumpMap: timberPair.bumpMap,
-    bumpScale: 0.03,
-    color: '#8A5D3B',
-    roughness: 0.8,
-  });
-
-  // 4 perimeter timber beams with mitred/rounded corners
   const halfW = w * 0.5;
   const halfD = d * 0.5;
   const beamT = 0.1;
 
-  const bNorth = new THREE.Mesh(new THREE.BoxGeometry(w, borderH, beamT), borderMat);
-  bNorth.position.set(0, borderH * 0.5, halfD);
-  bNorth.castShadow = true;
-  bNorth.receiveShadow = true;
-  group.add(bNorth);
+  const frameGroup = new THREE.Group();
+  for (const [bx, bz, bw, bd] of [
+    [0, halfD, w, beamT],
+    [0, -halfD, w, beamT],
+    [halfW, 0, beamT, d],
+    [-halfW, 0, beamT, d],
+  ]) {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(bw, borderH, bd), shared.borderMat);
+    beam.position.set(bx, borderH * 0.5, bz);
+    frameGroup.add(beam);
+  }
 
-  const bSouth = new THREE.Mesh(new THREE.BoxGeometry(w, borderH, beamT), borderMat);
-  bSouth.position.set(0, borderH * 0.5, -halfD);
-  bSouth.castShadow = true;
-  bSouth.receiveShadow = true;
-  group.add(bSouth);
+  for (const [cx, cz] of [[-halfW, -halfD], [halfW, -halfD], [-halfW, halfD], [halfW, halfD]]) {
+    const cornerPost = new THREE.Mesh(shared.cornerGeo, shared.postMat);
+    cornerPost.position.set(cx, (borderH + 0.035) * 0.5, cz);
+    frameGroup.add(cornerPost);
+  }
 
-  const bEast = new THREE.Mesh(new THREE.BoxGeometry(beamT, borderH, d), borderMat);
-  bEast.position.set(halfW, borderH * 0.5, 0);
-  bEast.castShadow = true;
-  bEast.receiveShadow = true;
-  group.add(bEast);
-
-  const bWest = new THREE.Mesh(new THREE.BoxGeometry(beamT, borderH, d), borderMat);
-  bWest.position.set(-halfW, borderH * 0.5, 0);
-  bWest.castShadow = true;
-  bWest.receiveShadow = true;
-  group.add(bWest);
-
+  consolidateStaticGroup(frameGroup);
+  group.add(frameGroup);
   return group;
 }
 
 /**
- * Creates 12 Flower Beds containing 450 to 650 botanical flower instances across 7 varieties.
- * Features procedural wind sway animation (2 - 4 degrees cycle).
+ * Creates 12 Flower Beds containing 450 to 650 batched InstancedMesh botanical flowers across 7 varieties.
+ * Features cohesive GLSL spatial wind sway (2 - 4 degrees cycle).
  */
 export function createFlowerBeds() {
   const masterGroup = new THREE.Group();
   masterGroup.name = 'botanical-flower-beds';
 
-  // Pre-generate template models for each variety
-  const templates = {};
-  for (const varId of Object.keys(FLOWER_VARIETIES)) {
-    templates[varId] = buildFlowerVarietyModel(varId);
+  const uniformTime = { value: 0 };
+
+  const soilTex = typeof document !== 'undefined' ? getSoilTexture(3, 2) : null;
+  const soilMat = new THREE.MeshStandardMaterial({
+    map: soilTex,
+    color: '#D8C7B6',
+    roughness: 0.94,
+    metalness: 0.0,
+  });
+  const timberPair = typeof document !== 'undefined'
+    ? getTimberTextures('sandalwood', 4, 1)
+    : { map: null, normalMap: null, roughnessMap: null };
+  const borderMat = new THREE.MeshStandardMaterial({
+    map: timberPair.map,
+    normalMap: timberPair.normalMap,
+    normalScale: new THREE.Vector2(0.75, 0.75),
+    roughnessMap: timberPair.roughnessMap,
+    color: '#9A6C45',
+    roughness: 0.78,
+  });
+  const postMat = new THREE.MeshStandardMaterial({
+    color: '#4B3221',
+    roughness: 0.82,
+  });
+  const sharedBedAssets = {
+    soilMat,
+    borderMat,
+    postMat,
+    cornerGeo: new THREE.BoxGeometry(0.125, 0.185, 0.125),
+  };
+
+  // Pre-bake consolidated GPU geometry layers for every (varietyId, colorVariantIdx)
+  const templateBuckets = new Map();
+  for (const [varId, spec] of Object.entries(FLOWER_VARIETIES)) {
+    const colorCount = Math.max(1, spec.petalColors ? spec.petalColors.length : 1);
+    for (let c = 0; c < colorCount; c++) {
+      const key = `${varId}:${c}`;
+      templateBuckets.set(key, {
+        varId,
+        layers: buildFlowerVarietyLayers(varId, c, uniformTime),
+        placements: [],
+      });
+    }
   }
 
-  const flowerInstances = [];
   const plantRecords = [];
   let totalFlowerCount = 0;
 
-  // Seeded PRNG for deterministic, reproducible flower placement
+  // Seeded PRNG for deterministic placement
   let seed = 71839;
   const rand = () => {
     seed = (seed * 16807) % 2147483647;
     return (seed - 1) / 2147483646;
   };
 
-  // Build each of the 12 beds
+  const bedDummy = new THREE.Object3D();
+  const localDummy = new THREE.Object3D();
+  const bedsCount = FLOWER_BED_LAYOUTS.length;
+
   FLOWER_BED_LAYOUTS.forEach((bedConfig, bedIndex) => {
     const bedGroup = new THREE.Group();
     bedGroup.name = `flower-bed-${bedIndex + 1}-${bedConfig.id}`;
@@ -717,108 +805,138 @@ export function createFlowerBeds() {
     bedGroup.position.set(bedConfig.x, terrainY, bedConfig.z);
     bedGroup.rotation.y = bedConfig.rotY;
 
-    // Add timber border & soil mound
-    const mound = createBedMoundAndBorder(bedConfig);
-    bedGroup.add(mound);
+    bedGroup.add(createBedMoundAndBorder(bedConfig, sharedBedAssets));
+    masterGroup.add(bedGroup);
 
-    // Populate bed with 42 to 48 flower plants (total across 12 beds = ~540 plants, within 450-650 range)
+    bedDummy.position.set(bedConfig.x, terrainY, bedConfig.z);
+    bedDummy.rotation.set(0, bedConfig.rotY, 0);
+    bedDummy.updateMatrixWorld(true);
+
+    // 44 to 46 plants per bed = 540 total across 12 beds
     const plantsInThisBed = 44 + (bedIndex % 3);
     const usableHalfW = bedConfig.width * 0.42;
     const usableHalfD = bedConfig.depth * 0.38;
 
     for (let p = 0; p < plantsInThisBed; p++) {
-      // Pick a variety from this bed's permitted varieties
       const varietyId = bedConfig.varieties[Math.floor(rand() * bedConfig.varieties.length)];
-      const template = templates[varietyId];
-      if (!template) continue;
+      const spec = FLOWER_VARIETIES[varietyId];
+      const colorCount = Math.max(1, spec.petalColors ? spec.petalColors.length : 1);
+      const colorIdx = Math.floor(rand() * colorCount);
+      const bucket = templateBuckets.get(`${varietyId}:${colorIdx}`);
+      if (!bucket) continue;
 
-      const plantInstance = template.clone(true);
-
-      // Distribute in elliptical mound interior with gentle clustering
       const angle = rand() * Math.PI * 2;
       const radiusFraction = Math.sqrt(rand()) * 0.95;
       const localX = Math.cos(angle) * usableHalfW * radiusFraction;
       const localZ = Math.sin(angle) * usableHalfD * radiusFraction;
-      const moundElev = Math.max(0, 0.12 * (1.0 - (localX * localX) / (usableHalfW * usableHalfW) - (localZ * localZ) / (usableHalfD * usableHalfD)));
+      const moundElev = Math.max(
+        0,
+        0.12 * (1.0 - (localX * localX) / (usableHalfW * usableHalfW) - (localZ * localZ) / (usableHalfD * usableHalfD))
+      );
 
-      // Height and rotation variation
       const scaleVariation = 0.88 + rand() * 0.24;
       const rotY = rand() * Math.PI * 2;
 
-      plantInstance.position.set(localX, moundElev, localZ);
-      plantInstance.rotation.y = rotY;
-      plantInstance.scale.set(scaleVariation, scaleVariation, scaleVariation);
+      localDummy.position.set(localX, moundElev, localZ);
+      localDummy.rotation.set(0, rotY, 0);
+      localDummy.scale.set(scaleVariation, scaleVariation, scaleVariation);
+      localDummy.updateMatrix();
 
-      // Find head node for wind sway
-      const headNode = plantInstance.getObjectByName('flower-head') || null;
+      const worldMatrix = new THREE.Matrix4().multiplyMatrices(bedDummy.matrixWorld, localDummy.matrix);
+      const worldPos = new THREE.Vector3().setFromMatrixPosition(worldMatrix);
 
-      // Record metadata for wind animation and inspection
-      const flowerMeta = {
-        id: `flower-${totalFlowerCount}`,
-        bedId: bedConfig.id,
-        varietyId,
-        node: plantInstance,
-        headNode,
-        baseRotX: plantInstance.rotation.x,
-        baseRotZ: plantInstance.rotation.z,
-        worldX: bedConfig.x + localX,
-        worldZ: bedConfig.z + localZ,
-        phaseOffset: rand() * Math.PI * 2,
-        swaySpeed: 1.1 + rand() * 0.4, // 3.5 - 6.5s cycle period
-      };
+      // Interleaved rank keeps all 12 beds populated proportionally when scaling quality density
+      const densityRank = p * bedsCount + bedIndex;
 
-      flowerInstances.push(flowerMeta);
+      bucket.placements.push({
+        matrix: worldMatrix,
+        phase: rand() * Math.PI * 2,
+        densityRank,
+      });
+
       plantRecords.push({
         variety: varietyId,
         bed: bedConfig.id,
-        worldPos: new THREE.Vector3(flowerMeta.worldX, terrainY + moundElev, flowerMeta.worldZ),
+        worldPos,
       });
 
-      bedGroup.add(plantInstance);
       totalFlowerCount++;
     }
-
-    masterGroup.add(bedGroup);
   });
 
-  // Track density setting
+  // Normalize densityRanks monotonically 0..totalFlowerCount-1 across placements and materialize InstancedMeshes
+  const allEntries = [];
+  for (const bucket of templateBuckets.values()) {
+    for (const pl of bucket.placements) allEntries.push(pl);
+  }
+  allEntries.sort((a, b) => a.densityRank - b.densityRank);
+  allEntries.forEach((pl, idx) => {
+    pl.densityRank = idx;
+  });
+
+  const flowerBatchesGroup = new THREE.Group();
+  flowerBatchesGroup.name = 'flowers-instanced-batched';
+  const instancedBatches = [];
+
+  for (const [key, bucket] of templateBuckets.entries()) {
+    const count = bucket.placements.length;
+    if (count === 0) continue;
+
+    // Sort bucket placements by densityRank so setDensity adjusts instMesh.count cleanly in O(1)
+    bucket.placements.sort((a, b) => a.densityRank - b.densityRank);
+
+    const phases = new Float32Array(count);
+    const ranks = new Int32Array(count);
+    for (let i = 0; i < count; i++) {
+      phases[i] = bucket.placements[i].phase;
+      ranks[i] = bucket.placements[i].densityRank;
+    }
+
+    const instMeshes = [];
+    for (const layer of bucket.layers) {
+      const geo = layer.geometry.clone();
+      geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases, 1));
+      const inst = new THREE.InstancedMesh(geo, layer.material, count);
+      inst.name = `flower-batch-${key}`;
+      inst.castShadow = layer.castShadow;
+      inst.receiveShadow = true;
+      for (let i = 0; i < count; i++) {
+        inst.setMatrixAt(i, bucket.placements[i].matrix);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      inst.frustumCulled = false;
+      flowerBatchesGroup.add(inst);
+      instMeshes.push(inst);
+      layer.geometry.dispose();
+    }
+
+    instancedBatches.push({ instMeshes, ranks, count });
+  }
+  masterGroup.add(flowerBatchesGroup);
+
   let activeDensity = 1.0;
   function setDensity(factor = 1.0) {
     activeDensity = Math.max(0.2, Math.min(1.0, factor));
-    const activeCount = Math.floor(flowerInstances.length * activeDensity);
-    flowerInstances.forEach((f, idx) => {
-      f.node.visible = idx < activeCount;
-    });
-  }
-
-  /**
-   * Procedural wind sway animation:
-   * Smoothly oscillates flowers 2 - 4 degrees (0.035 - 0.07 rad) off vertical
-   * with spatially coherent phase offsets simulating gentle wind waves.
-   */
-  function update(delta, elapsed = 0) {
-    if (activeDensity <= 0.05) return;
-    const time = elapsed || 0;
-
-    for (let i = 0; i < flowerInstances.length; i++) {
-      const f = flowerInstances[i];
-      if (!f.node.visible) continue;
-
-      // Spatial wind wave moving across garden (+Z and +X)
-      const windWave = (f.worldX * 0.12 + f.worldZ * 0.16) + time * f.swaySpeed;
-      // 2 - 4 degrees oscillation (~0.045 radians)
-      const swayRadX = Math.sin(windWave + f.phaseOffset) * 0.048;
-      const swayRadZ = Math.cos(windWave * 0.85 + f.phaseOffset) * 0.026;
-
-      f.node.rotation.x = f.baseRotX + swayRadX;
-      f.node.rotation.z = f.baseRotZ + swayRadZ;
-
-      // Flower head sways slightly extra relative to stem
-      if (f.headNode && f.headNode.rotation) {
-        f.headNode.rotation.x = swayRadX * 0.7;
-        f.headNode.rotation.z = swayRadZ * 0.7;
+    const maxRank = Math.floor(totalFlowerCount * activeDensity);
+    for (let b = 0; b < instancedBatches.length; b++) {
+      const batch = instancedBatches[b];
+      // Binary search for visible count in monotonic ranks array
+      let lo = 0;
+      let hi = batch.count;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (batch.ranks[mid] < maxRank) lo = mid + 1;
+        else hi = mid;
+      }
+      for (let m = 0; m < batch.instMeshes.length; m++) {
+        batch.instMeshes[m].count = lo;
       }
     }
+  }
+
+  function update(delta, elapsed = 0) {
+    if (activeDensity <= 0.05) return;
+    uniformTime.value = elapsed || 0;
   }
 
   masterGroup.userData = {
