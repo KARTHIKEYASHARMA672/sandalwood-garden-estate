@@ -30,6 +30,7 @@ if (typeof document !== 'undefined') {
       height: 100%;
       display: block;
       overflow: hidden;
+      z-index: 1;
     }
     #webgl-container canvas {
       display: block;
@@ -39,6 +40,7 @@ if (typeof document !== 'undefined') {
     #ui-root {
       position: absolute;
       inset: 0;
+      z-index: 100;
       pointer-events: none;
     }
   `;
@@ -54,6 +56,9 @@ export function bootstrap() {
   const uiContainer = document.getElementById('ui-root') || document.body;
 
   experienceInstance = new Experience(canvasContainer, uiContainer);
+  if (typeof window !== 'undefined') {
+    window.__sandalwood = experienceInstance;
+  }
   experienceInstance.start();
 
   return experienceInstance;

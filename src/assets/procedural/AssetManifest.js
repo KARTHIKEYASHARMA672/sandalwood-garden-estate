@@ -18,6 +18,10 @@ export const ASSET_MANIFEST = {
     { id: 'garden-lawn-soil', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
     { id: 'tree-bark', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
     { id: 'framed-artworks', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
+    { id: 'plaster-textures', type: 'Procedural CanvasTexture (Albedo + Normal + Roughness)', license: 'Original / Project-Authored' },
+    { id: 'rug-textures-x4', type: 'Procedural CanvasTexture (Woven Living / Bed1 / Bed2 / Gallery)', license: 'Original / Project-Authored' },
+    { id: 'brushed-metal-textures', type: 'Procedural CanvasTexture (Normal + Roughness Anisotropic)', license: 'Original / Project-Authored' },
+    { id: 'pmrem-sky-probe', type: 'Procedural IBL CubeCamera / PMREMGenerator Environment Map', license: 'Original / Project-Authored' },
   ],
   models: [
     { id: 'male-character-rig', heightMeters: 1.78, source: 'Original Hierarchical Procedural Mesh' },
@@ -25,6 +29,7 @@ export const ASSET_MANIFEST = {
     { id: 'flower-varieties-x7', countRange: '450-650', source: 'Original Curved-Petal Instanced Geometry' },
     { id: 'sandalwood-residence', footprintMeters: '24x18', source: 'Original Architectural Timber Builder' },
     { id: 'interior-furnishings', rooms: 12, source: 'Original Measured Furniture & Appliance Builders' },
+    { id: 'room-props-lathe-chamfered', categories: 'Furniture / Pottery / Cutlery / Towel Stacks', source: 'Original Procedural Extrusion & Lathe Builders' },
   ],
   audio: [
     { id: 'garden-breeze-birds', source: 'Web Audio API Procedural Synthesis' },
