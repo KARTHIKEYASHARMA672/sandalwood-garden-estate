@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build outputs
+dist/
+dist-ssr/
+
+# Local & debug
+*.local
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.env
+.env.*
+
+# Test & capture artifacts
+coverage/
+test-results/
+playwright-report/
+.playwright/
+screenshots/
+
+# Local orchestration / agent & deploy artifacts
+.agents/
+.netlify/
