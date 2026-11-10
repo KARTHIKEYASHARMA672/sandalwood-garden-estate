@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { POOL_SPEC } from '../house/HouseArchitecture.js';
-import { getStoneTileTextures, getFabricTextures } from '../assets/procedural/TextureGenerator.js';
+import {
+  getStoneTileTextures,
+  getFabricTextures,
+  getTimberTextures,
+  getBrushedMetalTextures,
+} from '../assets/procedural/TextureGenerator.js';
 
 /**
  * GLSL Shaders for Animated Pool Water & Moving Underwater Caustics
@@ -16,14 +21,17 @@ const WaterShader = {
       vUv = uv;
       vec3 pos = position;
 
-      // Gentle surface ripples (0.01 - 0.03 m amplitude, 2 - 5s period)
-      float ripple1 = sin(pos.x * 2.5 + uTime * 1.8) * 0.016;
-      float ripple2 = cos(pos.y * 3.2 + uTime * 1.4) * 0.012;
-      float ripple3 = sin((pos.x + pos.y) * 2.0 - uTime * 2.2) * 0.008;
+      // Multi-frequency gentle surface ripples (0.008 - 0.024 m amplitude)
+      float ripple1 = sin(pos.x * 2.4 + uTime * 1.75) * 0.013;
+      float ripple2 = cos(pos.y * 3.1 + uTime * 1.35) * 0.010;
+      float ripple3 = sin((pos.x * 0.8 + pos.y * 1.3) * 2.1 - uTime * 2.1) * 0.007;
       pos.z += ripple1 + ripple2 + ripple3;
 
+      float dx = 2.4 * cos(pos.x * 2.4 + uTime * 1.75) * 0.013 + 1.68 * cos((pos.x * 0.8 + pos.y * 1.3) * 2.1 - uTime * 2.1) * 0.007;
+      float dy = -3.1 * sin(pos.y * 3.1 + uTime * 1.35) * 0.010 + 2.73 * cos((pos.x * 0.8 + pos.y * 1.3) * 2.1 - uTime * 2.1) * 0.007;
+
       vWorldPosition = (modelMatrix * vec4(pos, 1.0)).xyz;
-      vNormal = normalize(normalMatrix * vec3(-ripple1 * 3.0, -ripple2 * 3.0, 1.0));
+      vNormal = normalize(normalMatrix * vec3(-dx * 2.2, -dy * 2.2, 1.0));
       gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
     }
   `,
@@ -37,49 +45,64 @@ const WaterShader = {
     varying vec3 vWorldPosition;
     varying vec3 vNormal;
 
-    // Procedural cellular/wave interference caustics
+    // Dual-layer procedural wave interference caustics
     float computeCaustic(vec2 p, float t) {
-      vec2 uv = p * 8.0;
-      float c1 = sin(uv.x * 1.5 + t * 2.0) + sin(uv.y * 1.2 - t * 1.8);
-      float c2 = sin(uv.x * -1.2 + uv.y * 1.6 + t * 2.4);
-      float c3 = sin(length(uv - vec2(4.0)) * 2.2 - t * 1.6);
+      vec2 uv = p * 9.0;
+      float c1 = sin(uv.x * 1.45 + t * 1.95) + sin(uv.y * 1.25 - t * 1.75);
+      float c2 = sin(uv.x * -1.15 + uv.y * 1.55 + t * 2.35);
+      float c3 = sin(length(uv - vec2(4.5)) * 2.1 - t * 1.55);
       float v = clamp((c1 + c2 + c3 + 3.0) / 6.0, 0.0, 1.0);
-      return pow(v, 3.5) * 1.8;
+      return pow(v, 3.6) * 1.6;
     }
 
     void main() {
-      // Shallows to depth color gradient
-      float depthGrad = clamp((vUv.x + vUv.y * 0.5) * 0.8, 0.0, 1.0);
-      vec3 waterColor = mix(uBaseColor, uDepthColor, depthGrad);
+      // Depth absorption gradient across stepped east end vs deeper west end
+      float depthGrad = clamp(1.0 - vUv.x * 0.72 + vUv.y * 0.18, 0.0, 1.0);
+      vec3 bodyColor = mix(uBaseColor, uDepthColor, depthGrad);
 
-      // Moving surface caustic highlights
-      float caustic = computeCaustic(vUv, uTime);
-      waterColor += vec3(caustic * 0.28 * (1.0 - uNightFactor * 0.7));
-
-      // Specular highlight from directional sun/moon
       vec3 viewDir = normalize(cameraPosition - vWorldPosition);
-      vec3 halfVec = normalize(uSunDirection + viewDir);
-      float spec = pow(max(dot(vNormal, halfVec), 0.0), 48.0);
-      waterColor += vec3(spec * 0.45);
+      vec3 N = normalize(vNormal);
 
-      // Night underwater illumination tint
-      vec3 nightGlow = vec3(0.18, 0.75, 0.85) * uNightFactor * 0.4;
+      // Schlick-style Fresnel sky reflection term
+      float cosTheta = clamp(dot(N, viewDir), 0.0, 1.0);
+      float fresnel = clamp(pow(1.0 - cosTheta, 3.2) * 0.68 + 0.08, 0.08, 0.86);
+
+      vec3 daySky = vec3(0.68, 0.85, 0.96);
+      vec3 nightSky = vec3(0.10, 0.18, 0.30);
+      vec3 skyRefl = mix(daySky, nightSky, clamp(uNightFactor, 0.0, 1.0));
+
+      vec3 waterColor = mix(bodyColor, skyRefl, fresnel * 0.55);
+
+      // Subtle sun caustics & crisp specular glints
+      float caustic = computeCaustic(vUv, uTime);
+      waterColor += vec3(caustic * 0.22 * (1.0 - uNightFactor * 0.75));
+
+      vec3 halfVec = normalize(uSunDirection + viewDir);
+      float spec = pow(max(dot(N, halfVec), 0.0), 72.0);
+      waterColor += mix(vec3(1.0, 0.96, 0.88), vec3(0.7, 0.85, 1.0), uNightFactor) * spec * 0.58;
+
+      // Nighttime sub-surface cyan LED scatter
+      vec3 nightGlow = vec3(0.18, 0.78, 0.86) * uNightFactor * 0.38;
       waterColor += nightGlow;
 
-      gl_FragColor = vec4(waterColor, 0.82);
+      float alpha = mix(0.66, 0.90, fresnel);
+      gl_FragColor = vec4(waterColor, alpha);
     }
   `,
 };
 
 /**
- * Custom underwater floor shader with projected animated caustics.
+ * Custom underwater floor shader with projected animated caustics and mosaic normal relief.
  */
-function createCausticFloorMaterial(mosaicTexture) {
+function createCausticFloorMaterial(mosaicTex) {
   const mat = new THREE.MeshStandardMaterial({
-    map: mosaicTexture,
+    map: mosaicTex.map,
+    normalMap: mosaicTex.normalMap,
+    normalScale: new THREE.Vector2(0.5, 0.5),
+    roughnessMap: mosaicTex.roughnessMap,
     color: '#5BAEC8',
-    roughness: 0.25,
-    metalness: 0.1,
+    roughness: 0.3,
+    metalness: 0.08,
   });
 
   mat.onBeforeCompile = (shader) => {
@@ -89,12 +112,12 @@ function createCausticFloorMaterial(mosaicTexture) {
       uniform float uTime;
       uniform float uNightFactor;
       float getFloorCaustic(vec2 p, float t) {
-        vec2 uv = p * 10.0;
-        float c1 = sin(uv.x * 1.4 + t * 2.1) + sin(uv.y * 1.1 - t * 1.9);
-        float c2 = sin(uv.x * -1.1 + uv.y * 1.5 + t * 2.3);
-        float c3 = sin(length(uv - vec2(5.0)) * 2.0 - t * 1.7);
+        vec2 uv = p * 11.0;
+        float c1 = sin(uv.x * 1.4 + t * 2.05) + sin(uv.y * 1.15 - t * 1.85);
+        float c2 = sin(uv.x * -1.1 + uv.y * 1.5 + t * 2.25);
+        float c3 = sin(length(uv - vec2(5.2)) * 2.0 - t * 1.65);
         float v = clamp((c1 + c2 + c3 + 3.0) / 6.0, 0.0, 1.0);
-        return pow(v, 3.2) * 1.4;
+        return pow(v, 3.2) * 1.45;
       }
     ` + shader.fragmentShader;
 
@@ -102,8 +125,8 @@ function createCausticFloorMaterial(mosaicTexture) {
       '#include <dithering_fragment>',
       `#include <dithering_fragment>
        float caustic = getFloorCaustic(vMapUv, uTime);
-       gl_FragColor.rgb += vec3(caustic * 0.22 * (1.0 - uNightFactor * 0.75));
-       gl_FragColor.rgb += vec3(0.12, 0.65, 0.75) * uNightFactor * 0.35;
+       gl_FragColor.rgb += vec3(caustic * 0.24 * (1.0 - uNightFactor * 0.72));
+       gl_FragColor.rgb += vec3(0.12, 0.65, 0.78) * uNightFactor * 0.38;
       `
     );
     mat.userData.shader = shader;
@@ -124,15 +147,16 @@ function buildTerraceDeck() {
 
   const stoneTex = typeof document !== 'undefined'
     ? getStoneTileTextures('paver', 6, 4)
-    : { map: null, bumpMap: null };
+    : { map: null, normalMap: null, roughnessMap: null };
 
   const deckMat = new THREE.MeshStandardMaterial({
     map: stoneTex.map,
-    bumpMap: stoneTex.bumpMap,
-    bumpScale: 0.02,
+    normalMap: stoneTex.normalMap,
+    normalScale: new THREE.Vector2(0.75, 0.75),
+    roughnessMap: stoneTex.roughnessMap,
     color: '#D4C6B0',
     roughness: 0.75, // Non-slip poolside stone finish
-    metalness: 0.05,
+    metalness: 0.04,
   });
 
   // Solid perimeter deck sections surrounding the 8x4m central pool cutout
@@ -150,6 +174,23 @@ function buildTerraceDeck() {
   );
   northDeck.receiveShadow = true;
   deckGroup.add(northDeck);
+
+  // Teak hardwood poolside deck boardwalk inlay beneath the loungers
+  const teakPbr = typeof document !== 'undefined'
+    ? getTimberTextures('teak', 5, 2)
+    : { map: null, normalMap: null, roughnessMap: null };
+  const teakBoardMat = new THREE.MeshStandardMaterial({
+    map: teakPbr.map,
+    normalMap: teakPbr.normalMap,
+    normalScale: new THREE.Vector2(0.65, 0.65),
+    roughnessMap: teakPbr.roughnessMap,
+    color: '#A57549',
+    roughness: 0.62,
+  });
+  const boardwalk = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.022, 1.55), teakBoardMat);
+  boardwalk.position.set(-7.3, tH + 0.008, -10.4);
+  boardwalk.receiveShadow = true;
+  deckGroup.add(boardwalk);
 
   // South deck strip (between pool cutout and rear boundary)
   const southW = tW;
@@ -204,14 +245,14 @@ function buildPoolBasin() {
   const basinGroup = new THREE.Group();
   basinGroup.name = 'pool-basin';
 
-  const pW = POOL_SPEC.poolMaxX - POOL_SPEC.poolMinX; // 8.0 m
-  const pD = POOL_SPEC.poolMaxZ - POOL_SPEC.poolMinZ; // 4.0 m
-  const depth = POOL_SPEC.waterDepth; // 1.35 m
-  const floorY = POOL_SPEC.terraceY - depth; // -1.10 m
+  const pW = POOL_SPEC.poolMaxX - POOL_SPEC.poolMinX;
+  const pD = POOL_SPEC.poolMaxZ - POOL_SPEC.poolMinZ;
+  const depth = POOL_SPEC.waterDepth;
+  const floorY = POOL_SPEC.terraceY - depth;
 
   const mosaicTex = typeof document !== 'undefined'
-    ? getStoneTileTextures('poolMosaic', 8, 8).map
-    : null;
+    ? getStoneTileTextures('poolMosaic', 8, 8)
+    : { map: null, normalMap: null, roughnessMap: null };
 
   const floorMat = createCausticFloorMaterial(mosaicTex);
 
@@ -231,7 +272,6 @@ function buildPoolBasin() {
   const wallMat = floorMat;
   const wallThick = 0.12;
 
-  // North wall
   const wNorth = new THREE.Mesh(new THREE.BoxGeometry(pW, depth, wallThick), wallMat);
   wNorth.position.set(
     (POOL_SPEC.poolMinX + POOL_SPEC.poolMaxX) * 0.5,
@@ -240,7 +280,6 @@ function buildPoolBasin() {
   );
   basinGroup.add(wNorth);
 
-  // South wall
   const wSouth = new THREE.Mesh(new THREE.BoxGeometry(pW, depth, wallThick), wallMat);
   wSouth.position.set(
     (POOL_SPEC.poolMinX + POOL_SPEC.poolMaxX) * 0.5,
@@ -249,7 +288,6 @@ function buildPoolBasin() {
   );
   basinGroup.add(wSouth);
 
-  // West wall
   const wWest = new THREE.Mesh(new THREE.BoxGeometry(wallThick, depth, pD), wallMat);
   wWest.position.set(
     POOL_SPEC.poolMinX - wallThick * 0.5,
@@ -258,7 +296,6 @@ function buildPoolBasin() {
   );
   basinGroup.add(wWest);
 
-  // East wall
   const wEast = new THREE.Mesh(new THREE.BoxGeometry(wallThick, depth, pD), wallMat);
   wEast.position.set(
     POOL_SPEC.poolMaxX + wallThick * 0.5,
@@ -267,15 +304,21 @@ function buildPoolBasin() {
   );
   basinGroup.add(wEast);
 
-  // 3. Rounded Beige Coping Rim (0.25 m wide around edge per PRD Section 15.1)
+  // 3. Bullnose Beige Sandstone Coping Rim (0.25 m wide)
+  const stoneTex = typeof document !== 'undefined'
+    ? getStoneTileTextures('foyer', 4, 1)
+    : { map: null, normalMap: null, roughnessMap: null };
   const copingMat = new THREE.MeshStandardMaterial({
-    color: '#E0D4C1',
-    roughness: 0.65,
+    map: stoneTex.map,
+    normalMap: stoneTex.normalMap,
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    roughnessMap: stoneTex.roughnessMap,
+    color: '#E3D7C4',
+    roughness: 0.62,
   });
   const cW = POOL_SPEC.copingWidth;
-  const cH = 0.05;
+  const cH = 0.055;
 
-  // Coping perimeter frames
   const cNorth = new THREE.Mesh(new THREE.BoxGeometry(pW + cW * 2, cH, cW), copingMat);
   cNorth.position.set((POOL_SPEC.poolMinX + POOL_SPEC.poolMaxX) * 0.5, POOL_SPEC.terraceY + cH * 0.5, POOL_SPEC.poolMaxZ + cW * 0.5);
   cNorth.castShadow = true;
@@ -296,13 +339,23 @@ function buildPoolBasin() {
   cEast.castShadow = true;
   basinGroup.add(cEast);
 
+  const bullN = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, pW, 10), copingMat);
+  bullN.rotation.z = Math.PI / 2;
+  bullN.position.set((POOL_SPEC.poolMinX + POOL_SPEC.poolMaxX) * 0.5, POOL_SPEC.terraceY + 0.028, POOL_SPEC.poolMaxZ);
+  basinGroup.add(bullN);
+
+  const bullS = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, pW, 10), copingMat);
+  bullS.rotation.z = Math.PI / 2;
+  bullS.position.set((POOL_SPEC.poolMinX + POOL_SPEC.poolMaxX) * 0.5, POOL_SPEC.terraceY + 0.028, POOL_SPEC.poolMinZ);
+  basinGroup.add(bullS);
+
   // 4. Stepped Entry into Pool (3 submerged wide steps at east end)
   const stepCount = 3;
   const stepRun = 0.35;
   for (let s = 0; s < stepCount; s++) {
     const sWidth = 2.4;
     const sDepth = stepRun;
-    const sHeight = (depth / (stepCount + 1));
+    const sHeight = depth / (stepCount + 1);
     const stepMesh = new THREE.Mesh(new THREE.BoxGeometry(sDepth, sHeight * (stepCount - s), sWidth), wallMat);
     stepMesh.position.set(
       POOL_SPEC.poolMaxX - (s + 0.5) * stepRun,
@@ -313,22 +366,43 @@ function buildPoolBasin() {
     basinGroup.add(stepMesh);
   }
 
-  // 5. Stainless Steel Grab Rail / Ladder at NW corner
+  // 5. Curved U-Shaped Brushed Stainless Steel Grab Rails & Submerged Ladder Rungs
+  const steelPbr = typeof document !== 'undefined'
+    ? getBrushedMetalTextures('#DCDCDC', 2, 2)
+    : { normalMap: null, roughnessMap: null };
   const chromeMat = new THREE.MeshStandardMaterial({
-    color: '#D8D8D8',
-    metalness: 0.95,
-    roughness: 0.15,
+    normalMap: steelPbr.normalMap,
+    normalScale: new THREE.Vector2(0.3, 0.3),
+    roughnessMap: steelPbr.roughnessMap,
+    color: '#E2E4E6',
+    metalness: 0.94,
+    roughness: 0.16,
   });
-  const railGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.95, 8);
-  const rail1 = new THREE.Mesh(railGeo, chromeMat);
-  rail1.position.set(POOL_SPEC.poolMinX + 0.4, POOL_SPEC.terraceY + 0.35, POOL_SPEC.poolMaxZ + 0.05);
-  rail1.castShadow = true;
-  basinGroup.add(rail1);
 
-  const rail2 = new THREE.Mesh(railGeo, chromeMat);
-  rail2.position.set(POOL_SPEC.poolMinX + 0.7, POOL_SPEC.terraceY + 0.35, POOL_SPEC.poolMaxZ + 0.05);
-  rail2.castShadow = true;
-  basinGroup.add(rail2);
+  const baseY = POOL_SPEC.terraceY + cH;
+  const ladderZEdge = POOL_SPEC.poolMaxZ + 0.03;
+  for (const lx of [POOL_SPEC.poolMinX + 0.42, POOL_SPEC.poolMinX + 0.88]) {
+    const flange = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.048, 0.02, 12), chromeMat);
+    flange.position.set(lx, baseY + 0.01, ladderZEdge + 0.18);
+    basinGroup.add(flange);
+
+    const archCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(lx, baseY, ladderZEdge + 0.18),
+      new THREE.Vector3(lx, baseY + 0.56, ladderZEdge + 0.16),
+      new THREE.Vector3(lx, baseY + 0.66, ladderZEdge - 0.02),
+      new THREE.Vector3(lx, baseY + 0.44, ladderZEdge - 0.1),
+      new THREE.Vector3(lx, baseY - 0.95, ladderZEdge - 0.1),
+    ]);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(archCurve, 24, 0.021, 10, false), chromeMat);
+    tube.castShadow = true;
+    basinGroup.add(tube);
+  }
+
+  for (let r = 0; r < 3; r++) {
+    const rung = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.022, 0.06), chromeMat);
+    rung.position.set(POOL_SPEC.poolMinX + 0.65, baseY - 0.25 - r * 0.28, ladderZEdge - 0.1);
+    basinGroup.add(rung);
+  }
 
   basinGroup.userData.floorMaterial = floorMat;
 
@@ -384,27 +458,44 @@ function buildWaterSurface() {
 function buildTerraceFurnishings() {
   const group = new THREE.Group();
   group.name = 'terrace-furnishings';
+  const seats = [];
 
+  const teakPbr = typeof document !== 'undefined'
+    ? getTimberTextures('teak', 2, 1)
+    : { map: null, normalMap: null, roughnessMap: null };
   const teakMat = new THREE.MeshStandardMaterial({
-    color: '#8A5D3B',
-    roughness: 0.75,
+    map: teakPbr.map,
+    normalMap: teakPbr.normalMap,
+    normalScale: new THREE.Vector2(0.65, 0.65),
+    roughnessMap: teakPbr.roughnessMap,
+    color: '#91623D',
+    roughness: 0.68,
   });
 
   const cushionTex = typeof document !== 'undefined'
     ? getFabricTextures('#F0EAD6', 4, 4)
-    : { map: null };
+    : { map: null, normalMap: null, roughnessMap: null };
   const cushionMat = new THREE.MeshStandardMaterial({
     map: cushionTex.map,
+    normalMap: cushionTex.normalMap,
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughnessMap: cushionTex.roughnessMap,
     color: '#F0EAD6',
-    roughness: 0.85,
+    roughness: 0.88,
   });
 
+  const towelTex = typeof document !== 'undefined'
+    ? getFabricTextures('#3B82A6', 4, 4)
+    : { map: null, normalMap: null, roughnessMap: null };
   const towelMat = new THREE.MeshStandardMaterial({
+    map: towelTex.map,
+    normalMap: towelTex.normalMap,
+    normalScale: new THREE.Vector2(0.6, 0.6),
     color: '#3B82A6',
-    roughness: 0.9,
+    roughness: 0.92,
   });
 
-  // 1. Two Sun Loungers placed north of the pool facing south
+  // 1. Two Slatted Teak Sun Loungers facing south (-Z) toward the pool
   const loungerConfigs = [
     { id: 'lounger-1', x: -8.8, z: -10.4 },
     { id: 'lounger-2', x: -6.8, z: -10.4 },
@@ -413,121 +504,192 @@ function buildTerraceFurnishings() {
   loungerConfigs.forEach((cfg) => {
     const lGroup = new THREE.Group();
     lGroup.name = cfg.id;
-    lGroup.position.set(cfg.x, POOL_SPEC.terraceY, cfg.z);
+    lGroup.position.set(cfg.x, POOL_SPEC.terraceY + 0.018, cfg.z);
 
-    // Teak frame (1.90 m L x 0.65 m W x 0.32 m H)
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.08, 1.9), teakMat);
-    frame.position.y = 0.28;
-    frame.castShadow = true;
-    lGroup.add(frame);
+    // Side rails & slatted frame
+    for (const rx of [-0.305, 0.305]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.065, 1.9), teakMat);
+      rail.position.set(rx, 0.27, 0);
+      rail.castShadow = true;
+      lGroup.add(rail);
+    }
+    for (let s = 0; s < 12; s++) {
+      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.57, 0.022, 0.12), teakMat);
+      slat.position.set(0, 0.285, -0.84 + s * 0.152);
+      lGroup.add(slat);
+    }
 
-    // 4 Teak legs
-    for (let lx = -0.28; lx <= 0.28; lx += 0.56) {
-      for (let lz = -0.85; lz <= 0.85; lz += 1.7) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.28, 6), teakMat);
-        leg.position.set(lx, 0.14, lz);
+    // Tapered teak legs
+    for (const lx of [-0.28, 0.28]) {
+      for (const lz of [-0.84, 0.84]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.022, 0.27, 8), teakMat);
+        leg.position.set(lx, 0.135, lz);
         leg.castShadow = true;
         lGroup.add(leg);
       }
     }
 
-    // Weather-resistant cream cushion (0.08 m thick)
-    const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.08, 1.85), cushionMat);
-    cushion.position.y = 0.36;
-    cushion.castShadow = true;
-    lGroup.add(cushion);
+    // Articulated cream deck pad + reclined backrest pad + rolled headrest bolster
+    const baseCushion = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.075, 1.24), cushionMat);
+    baseCushion.position.set(0, 0.34, -0.28);
+    baseCushion.castShadow = true;
+    lGroup.add(baseCushion);
 
-    // Inclined headrest
-    const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.08, 0.55), cushionMat);
-    headrest.position.set(0, 0.44, 0.65);
-    headrest.rotation.x = -0.32;
+    const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.075, 0.62), cushionMat);
+    headrest.position.set(0, 0.445, 0.59);
+    headrest.rotation.x = 0.34; // leans upper edge up on north side so feet point south (-Z) over pool
     headrest.castShadow = true;
     lGroup.add(headrest);
 
-    // Folded pool towel
-    const towel = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.35), towelMat);
-    towel.position.set(0, 0.42, -0.4);
-    towel.castShadow = true;
-    lGroup.add(towel);
+    const bolster = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.46, 12), cushionMat);
+    bolster.rotation.z = Math.PI / 2;
+    bolster.position.set(0, 0.555, 0.72);
+    bolster.castShadow = true;
+    lGroup.add(bolster);
 
-    // Interaction metadata
+    // Rolled poolside terry towel
+    const towelFold = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.038, 0.36), towelMat);
+    towelFold.position.set(0, 0.395, -0.52);
+    towelFold.castShadow = true;
+    lGroup.add(towelFold);
+
+    const towelRoll = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.42, 12), towelMat);
+    towelRoll.rotation.z = Math.PI / 2;
+    towelRoll.position.set(0, 0.43, -0.68);
+    lGroup.add(towelRoll);
+
+    const seatMeta = {
+      id: cfg.id,
+      label: 'Poolside Teak Sun Lounger',
+      x: cfg.x,
+      y: POOL_SPEC.terraceY + 0.42,
+      z: cfg.z - 0.18,
+      yaw: 0,
+    };
+    seats.push(seatMeta);
+
     lGroup.userData = {
       id: cfg.id,
       type: 'lounger',
       label: 'Poolside Teak Sun Lounger',
       interactable: true,
       prompt: '[E] Relax on Sun Lounger',
-      sitPosition: new THREE.Vector3(cfg.x, POOL_SPEC.terraceY + 0.4, cfg.z),
+      sitPosition: new THREE.Vector3(cfg.x, POOL_SPEC.terraceY + 0.42, cfg.z - 0.18),
     };
 
     group.add(lGroup);
   });
 
-  // 2. Small Round Teak Drinks Table between loungers (0.45 m dia, 0.45 m H)
+  // 2. Small Slatted Teak Side Table between Loungers (0.45 m dia)
   const tableGroup = new THREE.Group();
   tableGroup.name = 'pool-drinks-table';
-  tableGroup.position.set(-7.8, POOL_SPEC.terraceY, -10.4);
+  tableGroup.position.set(-7.8, POOL_SPEC.terraceY + 0.018, -10.4);
 
-  const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.04, 16), teakMat);
-  tableTop.position.y = 0.42;
+  const tableTop = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.225, 0.036, 18), teakMat);
+  tableTop.position.y = 0.43;
   tableTop.castShadow = true;
   tableGroup.add(tableTop);
 
-  const tableLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.4, 8), teakMat);
-  tableLeg.position.y = 0.2;
-  tableLeg.castShadow = true;
-  tableGroup.add(tableLeg);
+  const tableCol = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.055, 0.41, 10), teakMat);
+  tableCol.position.y = 0.205;
+  tableCol.castShadow = true;
+  tableGroup.add(tableCol);
 
-  // Chilled drinks glass on table
+  const tableFoot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.025, 14), teakMat);
+  tableFoot.position.y = 0.012;
+  tableGroup.add(tableFoot);
+
   const glassMat = new THREE.MeshStandardMaterial({
-    color: '#E0F7FA',
-    roughness: 0.1,
+    color: '#DCF7FA',
+    roughness: 0.08,
     metalness: 0.1,
     transparent: true,
-    opacity: 0.7,
+    opacity: 0.72,
   });
-  const glass = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.1, 8), glassMat);
-  glass.position.set(0.06, 0.49, 0.04);
-  tableGroup.add(glass);
+  const drinkLiquidMat = new THREE.MeshStandardMaterial({
+    color: '#F4A652',
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.85,
+  });
+  for (const [gx, gz] of [[-0.07, 0.04], [0.08, -0.05]]) {
+    const gShell = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.024, 0.11, 12), glassMat);
+    gShell.position.set(gx, 0.503, gz);
+    tableGroup.add(gShell);
+
+    const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.021, 0.075, 10), drinkLiquidMat);
+    liquid.position.set(gx, 0.49, gz);
+    tableGroup.add(liquid);
+  }
 
   group.add(tableGroup);
 
-  // 3. Cantilever Patio Umbrella (2.50 m dia octagonal canopy per PRD Section 15.4)
+  // 3. Cantilever Patio Umbrella (2.50 m dia ribbed canopy, positioned beside loungers leaving patio slider open)
   const umbrellaGroup = new THREE.Group();
   umbrellaGroup.name = 'cantilever-umbrella';
-  umbrellaGroup.position.set(-5.2, POOL_SPEC.terraceY, -10.2);
+  umbrellaGroup.position.set(-7.3, POOL_SPEC.terraceY, -10.25);
+  umbrellaGroup.rotation.y = -0.18;
 
-  const metalMat = new THREE.MeshStandardMaterial({ color: '#2B241E', metalness: 0.85, roughness: 0.35 });
-  const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 0.08, 12), metalMat);
-  baseMesh.position.y = 0.04;
-  baseMesh.castShadow = true;
-  umbrellaGroup.add(baseMesh);
+  const metalMat = new THREE.MeshStandardMaterial({ color: '#2B241E', metalness: 0.85, roughness: 0.34 });
+  const baseSlab = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.07, 0.68), metalMat);
+  baseSlab.position.y = 0.035;
+  baseSlab.castShadow = true;
+  umbrellaGroup.add(baseSlab);
 
-  // Offset cantilever curved mast
-  const mastGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.5, 8);
-  const mast = new THREE.Mesh(mastGeo, metalMat);
-  mast.position.set(0, 1.25, 0);
-  mast.rotation.z = -0.12;
+  const mastCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.07, 0),
+    new THREE.Vector3(0.05, 1.35, 0),
+    new THREE.Vector3(-0.32, 2.52, 0),
+  ]);
+  const mast = new THREE.Mesh(new THREE.TubeGeometry(mastCurve, 16, 0.036, 10, false), metalMat);
   mast.castShadow = true;
   umbrellaGroup.add(mast);
 
-  // Octagonal fabric canopy (2.5 m dia)
+  const canopyTex = typeof document !== 'undefined'
+    ? getFabricTextures('#EFE8D8', 6, 6)
+    : { map: null, normalMap: null };
   const canopyMat = new THREE.MeshStandardMaterial({
+    map: canopyTex.map,
+    normalMap: canopyTex.normalMap,
+    normalScale: new THREE.Vector2(0.4, 0.4),
     color: '#EFE8D8',
-    roughness: 0.85,
+    roughness: 0.86,
     side: THREE.DoubleSide,
   });
-  const canopyGeo = new THREE.ConeGeometry(1.25, 0.45, 8);
-  const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-  canopy.position.set(-0.4, 2.45, 0);
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.26, 0.44, 8, 1, true), canopyMat);
+  canopy.position.set(-0.4, 2.38, 0);
   canopy.castShadow = true;
   umbrellaGroup.add(canopy);
 
+  const ventCap = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.14, 8), canopyMat);
+  ventCap.position.set(-0.4, 2.61, 0);
+  umbrellaGroup.add(ventCap);
+
+  // 8 visible ribs under canopy
+  for (let r = 0; r < 8; r++) {
+    const ra = (r / 8) * Math.PI * 2;
+    const ribCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.4, 2.48, 0),
+      new THREE.Vector3(-0.4 + Math.cos(ra) * 1.24, 2.17, Math.sin(ra) * 1.24),
+    ]);
+    umbrellaGroup.add(new THREE.Mesh(new THREE.TubeGeometry(ribCurve, 4, 0.01, 5, false), metalMat));
+  }
+
   group.add(umbrellaGroup);
 
-  // 4. Two Terracotta Planters with dwarf palms at terrace corners
-  const terraMat = new THREE.MeshStandardMaterial({ color: '#C86A4B', roughness: 0.85 });
-  const palmMat = new THREE.MeshStandardMaterial({ color: '#35633A', roughness: 0.75, side: THREE.DoubleSide });
+  // 4. Two Turned Terracotta Planters with Arching Tropical Palms at Terrace Corners
+  const terraMat = new THREE.MeshStandardMaterial({ color: '#C56747', roughness: 0.82 });
+  const palmMat = new THREE.MeshStandardMaterial({ color: '#35633A', roughness: 0.72, side: THREE.DoubleSide });
+  const potProfile = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.18, 0.0),
+    new THREE.Vector2(0.25, 0.25),
+    new THREE.Vector2(0.28, 0.42),
+    new THREE.Vector2(0.3, 0.48),
+    new THREE.Vector2(0.24, 0.49),
+    new THREE.Vector2(0.22, 0.41),
+  ];
+  const potGeo = new THREE.LatheGeometry(potProfile, 16);
 
   const planterCoords = [
     { x: -12.4, z: -16.8 },
@@ -539,27 +701,29 @@ function buildTerraceFurnishings() {
     plGroup.name = `pool-planter-${idx + 1}`;
     plGroup.position.set(p.x, POOL_SPEC.terraceY, p.z);
 
-    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.2, 0.48, 12), terraMat);
-    pot.position.y = 0.24;
+    const pot = new THREE.Mesh(potGeo, terraMat);
     pot.castShadow = true;
+    pot.receiveShadow = true;
     plGroup.add(pot);
 
-    // Palm fronds
-    for (let f = 0; f < 6; f++) {
-      const frondGeo = new THREE.ConeGeometry(0.08, 0.55, 4);
-      frondGeo.rotateX(Math.PI / 2);
+    for (let f = 0; f < 9; f++) {
+      const ang = (f / 9) * Math.PI * 2 + idx * 0.5;
+      const tier = f % 2;
+      const arc = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0.43, 0),
+        new THREE.Vector3(Math.cos(ang) * 0.16, 0.76 + tier * 0.12, Math.sin(ang) * 0.16),
+        new THREE.Vector3(Math.cos(ang) * (0.44 + tier * 0.1), 0.72 - tier * 0.14, Math.sin(ang) * (0.44 + tier * 0.1)),
+      ]);
+      const frondGeo = new THREE.TubeGeometry(arc, 7, 0.025, 4, false);
+      frondGeo.scale(1, 0.42, 1.35);
       const frond = new THREE.Mesh(frondGeo, palmMat);
-      const ang = (f / 6) * Math.PI * 2;
-      frond.position.set(Math.cos(ang) * 0.1, 0.48, Math.sin(ang) * 0.1);
-      frond.rotation.y = ang;
-      frond.rotation.x = 0.65;
       frond.castShadow = true;
       plGroup.add(frond);
     }
     group.add(plGroup);
   });
 
-  return group;
+  return { group, seats };
 }
 
 /**
@@ -583,10 +747,10 @@ export function createPoolTerrace() {
   masterGroup.add(waterMesh);
 
   // 4. Pool terrace furnishings
-  const furnishings = buildTerraceFurnishings();
+  const { group: furnishings, seats } = buildTerraceFurnishings();
   masterGroup.add(furnishings);
 
-  // 5. 2 Recessed Underwater Pool Lights
+  // 5. 2 Recessed Underwater Pool Lights with real underwater cyan PointLights
   const underwaterLightGroup = new THREE.Group();
   underwaterLightGroup.name = 'underwater-lights';
   const lightMat = new THREE.MeshStandardMaterial({
@@ -599,11 +763,19 @@ export function createPoolTerrace() {
   const uLight1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 12), lightMat);
   uLight1.position.set(POOL_SPEC.poolMinX + 0.05, -0.4, -13.5);
   uLight1.rotation.z = Math.PI / 2;
+  const pLight1 = new THREE.PointLight('#4AD9D9', 0.95, 9.5, 1.6);
+  pLight1.position.set(0, 0.25, 0);
+  uLight1.add(pLight1);
+  uLight1.userData.light = pLight1;
   underwaterLightGroup.add(uLight1);
 
   const uLight2 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.04, 12), lightMat);
   uLight2.position.set(POOL_SPEC.poolMaxX - 0.05, -0.4, -13.5);
   uLight2.rotation.z = -Math.PI / 2;
+  const pLight2 = new THREE.PointLight('#4AD9D9', 0.95, 9.5, 1.6);
+  pLight2.position.set(0, 0.25, 0);
+  uLight2.add(pLight2);
+  uLight2.userData.light = pLight2;
   underwaterLightGroup.add(uLight2);
 
   masterGroup.add(underwaterLightGroup);
@@ -693,7 +865,9 @@ export function createPoolTerrace() {
     group: masterGroup,
     waterMesh,
     colliders,
+    seats,
     underwaterLights: underwaterLightGroup,
+    poolLights: [uLight1, uLight2],
     setNightFactor,
     update,
   };
