@@ -2,12 +2,26 @@ import * as THREE from 'three';
 import { getFabricTextures } from '../assets/procedural/TextureGenerator.js';
 
 /**
- * Articulated, stylised-realistic procedural character rig.
+ * Generates an anatomical contoured LatheGeometry along local Y in [0, length]
+ * (or shifted by offsetY) with optional X/Z oval scaling for natural human silhouettes.
+ */
+function createContouredLathe(profilePairs, radialSegs = 16, scaleX = 1, scaleZ = 1, offsetY = 0) {
+  const pts = profilePairs.map(([r, y]) => new THREE.Vector2(Math.max(0.001, r), y + offsetY));
+  const geo = new THREE.LatheGeometry(pts, radialSegs);
+  if (scaleX !== 1 || scaleZ !== 1) {
+    geo.scale(scaleX, 1, scaleZ);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Articulated, anatomically contoured procedural character rig.
  * - Male: 1.78 m tall, shoulder 0.46 m, skin #A96F4F, cream linen shirt #E9DFC9 (rolled sleeves),
  *   deep olive trousers #46533E, dark brown shoes #4B3428, dark-strap wristwatch.
  * - Female: 1.66 m tall, shoulder 0.40 m, skin #B77D5C, long wavy dark hair #211916,
  *   dusty-rose #C9828B & cream #F0E5D2 outfit, tan flats #9B704F, understated earrings.
- * Supports idle breathing, periodic blinking, walk/run cycle, and seated pose.
+ * Supports idle breathing, periodic blinking, walk/fast-walk cycle, smooth sit/stand blend, and door gesture.
  */
 export function createCharacterRig(variant = 'female') {
   const isMale = variant === 'male';
@@ -22,334 +36,450 @@ export function createCharacterRig(variant = 'female') {
 
   const skinMat = new THREE.MeshStandardMaterial({
     color: skinHex,
-    roughness: 0.58,
+    roughness: 0.54,
     metalness: 0.02,
   });
   const lipMat = new THREE.MeshStandardMaterial({
-    color: isMale ? '#8C5242' : '#9E5855',
+    color: isMale ? '#965D4C' : '#9E5855',
     roughness: 0.52,
   });
   const hairMat = new THREE.MeshStandardMaterial({
     color: hairHex,
-    roughness: isMale ? 0.72 : 0.76,
-    metalness: 0.04,
+    roughness: isMale ? 0.68 : 0.72,
+    metalness: 0.06,
   });
-  const scleraMat = new THREE.MeshStandardMaterial({ color: '#F3EFE9', roughness: 0.28 });
-  const irisMat = new THREE.MeshStandardMaterial({ color: eyeHex, roughness: 0.22 });
-  const pupilMat = new THREE.MeshStandardMaterial({ color: '#110C0A', roughness: 0.12 });
+  const scleraMat = new THREE.MeshStandardMaterial({ color: '#F3EFE9', roughness: 0.25 });
+  const irisMat = new THREE.MeshStandardMaterial({ color: eyeHex, roughness: 0.2 });
+  const pupilMat = new THREE.MeshStandardMaterial({ color: '#110C0A', roughness: 0.1 });
 
   const linenTex = getFabricTextures(isMale ? '#E9DFC9' : '#C9828B', 3, 3);
   const topMat = new THREE.MeshStandardMaterial({
     map: linenTex.map,
-    bumpMap: linenTex.bumpMap,
-    bumpScale: 0.004,
-    roughness: 0.82,
+    normalMap: linenTex.normalMap,
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughnessMap: linenTex.roughnessMap,
+    roughness: 0.84,
   });
 
   const accentTex = getFabricTextures(isMale ? '#46533E' : '#F0E5D2', 3, 3);
   const bottomOrAccentMat = new THREE.MeshStandardMaterial({
     map: accentTex.map,
-    bumpMap: accentTex.bumpMap,
-    bumpScale: 0.004,
-    roughness: 0.85,
+    normalMap: accentTex.normalMap,
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughnessMap: accentTex.roughnessMap,
+    roughness: 0.86,
   });
+
+  const beltMat = new THREE.MeshStandardMaterial({ color: '#3B281E', roughness: 0.52, metalness: 0.08 });
+  const buckleMat = new THREE.MeshStandardMaterial({ color: '#C5A059', roughness: 0.28, metalness: 0.85 });
 
   const shoeMat = new THREE.MeshStandardMaterial({
     color: isMale ? '#4B3428' : '#9B704F',
-    roughness: 0.55,
+    roughness: 0.46,
+    metalness: 0.06,
   });
   const soleMat = new THREE.MeshStandardMaterial({ color: '#221E1C', roughness: 0.9 });
 
   // Vertical rig scale from canonical 1.78 / 1.66 proportions
   const hipHeight = isMale ? 0.90 : 0.84;
   const torsoH = isMale ? 0.50 : 0.46;
-  const headCenterOffset = isMale ? 0.21 : 0.20;
+  const headCenterOffset = isMale ? 0.160 : 0.150;
 
   const pelvis = new THREE.Group();
   pelvis.position.y = hipHeight;
   root.add(pelvis);
 
-  // Hips / Waist
-  const hipsGeo = new THREE.CylinderGeometry(
-    isMale ? 0.145 : 0.135,
-    isMale ? 0.14 : 0.148,
-    0.16,
-    18
-  );
+  // Contoured Pelvis & Waistblock
+  const pelvisProfile = isMale
+    ? [[0.115, -0.09], [0.145, -0.02], [0.148, 0.03], [0.135, 0.08]]
+    : [[0.125, -0.09], [0.152, -0.02], [0.144, 0.03], [0.118, 0.08]];
+  const hipsGeo = createContouredLathe(pelvisProfile, 20, 1.08, 0.72);
   const hipsMesh = new THREE.Mesh(hipsGeo, isMale ? bottomOrAccentMat : topMat);
-  hipsMesh.scale.set(1.08, 1, 0.72);
   hipsMesh.castShadow = true;
+  hipsMesh.receiveShadow = true;
   pelvis.add(hipsMesh);
 
-  // Upper torso / chest
+  if (isMale) {
+    const belt = new THREE.Mesh(createContouredLathe([[0.139, 0.055], [0.141, 0.082]], 20, 1.09, 0.73), beltMat);
+    pelvis.add(belt);
+    const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.032, 0.015), buckleMat);
+    buckle.position.set(0, 0.068, 0.104);
+    pelvis.add(buckle);
+  }
+
+  // Contoured Ribcage / Shoulders (natural linen shirt / draped bodice)
   const torso = new THREE.Group();
   torso.position.y = 0.07;
   pelvis.add(torso);
 
-  const chestGeo = new THREE.CylinderGeometry(
-    isMale ? 0.165 : 0.142,
-    isMale ? 0.138 : 0.122,
-    torsoH,
-    18
-  );
+  const chestProfile = isMale
+    ? [
+        [0.132, 0.0],
+        [0.137, torsoH * 0.18],
+        [0.152, torsoH * 0.48],
+        [0.163, torsoH * 0.76],
+        [0.154, torsoH * 0.91],
+        [0.104, torsoH * 0.98],
+        [0.058, torsoH],
+      ]
+    : [
+        [0.112, 0.0],
+        [0.117, torsoH * 0.22],
+        [0.134, torsoH * 0.54],
+        [0.138, torsoH * 0.74],
+        [0.128, torsoH * 0.90],
+        [0.088, torsoH * 0.98],
+        [0.053, torsoH],
+      ];
+  const chestGeo = createContouredLathe(chestProfile, 22, 1.14, 0.68);
   const chestMesh = new THREE.Mesh(chestGeo, topMat);
-  chestMesh.position.y = torsoH * 0.5;
-  chestMesh.scale.set(1.15, 1, 0.68);
   chestMesh.castShadow = true;
+  chestMesh.receiveShadow = true;
   torso.add(chestMesh);
 
-  // Shirt collar / dress sash accent
+  // Subtle folded linen button placket or tailored sash & natural draped midi skirt
   if (isMale) {
-    const collar = new THREE.Mesh(
-      new THREE.TorusGeometry(0.075, 0.014, 10, 20),
-      topMat
-    );
-    collar.rotation.x = Math.PI * 0.44;
-    collar.position.set(0, torsoH - 0.01, 0.01);
-    torso.add(collar);
+    const collarBand = new THREE.Mesh(new THREE.TorusGeometry(0.054, 0.0075, 10, 22), topMat);
+    collarBand.rotation.x = Math.PI * 0.46;
+    collarBand.position.set(0, torsoH - 0.01, 0.006);
+    torso.add(collarBand);
+
+    for (const side of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.022, 0.012), topMat);
+      lapel.position.set(side * 0.024, torsoH - 0.018, 0.056);
+      lapel.rotation.z = side * -0.35;
+      lapel.rotation.y = side * 0.25;
+      torso.add(lapel);
+    }
+
+    const placket = new THREE.Mesh(new THREE.BoxGeometry(0.022, torsoH * 0.84, 0.011), topMat);
+    placket.position.set(0, torsoH * 0.48, 0.101);
+    torso.add(placket);
   } else {
-    // Cream sash & neckline trim
     const sash = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.128, 0.132, 0.055, 18),
+      createContouredLathe([[0.118, 0.0], [0.115, 0.032], [0.120, 0.064]], 22, 1.15, 0.72),
       bottomOrAccentMat
     );
-    sash.scale.set(1.12, 1, 0.72);
-    sash.position.y = 0.07;
+    sash.position.y = 0.025;
     torso.add(sash);
 
-    const collarTrim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.072, 0.012, 10, 20),
-      bottomOrAccentMat
-    );
-    collarTrim.rotation.x = Math.PI * 0.42;
-    collarTrim.position.set(0, torsoH - 0.015, 0.01);
+    const collarTrim = new THREE.Mesh(new THREE.TorusGeometry(0.056, 0.011, 10, 22), bottomOrAccentMat);
+    collarTrim.rotation.x = Math.PI * 0.46;
+    collarTrim.position.set(0, torsoH - 0.014, 0.008);
     torso.add(collarTrim);
 
-    // Flowing pleated midi skirt panel
-    const skirt = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.142, 0.24, 0.48, 22, 1, false),
-      topMat
-    );
-    skirt.scale.set(1.06, 1, 0.85);
+    // Flowing fluted pleated midi skirt with gentle sinusoidal fabric folds around hem
+    const skirtH = 0.50;
+    const skirtGeo = new THREE.CylinderGeometry(0.146, 0.255, skirtH, 28, 6, true);
+    const sPos = skirtGeo.getAttribute('position');
+    for (let i = 0; i < sPos.count; i++) {
+      const x = sPos.getX(i);
+      const y = sPos.getY(i);
+      const z = sPos.getZ(i);
+      const drop = Math.max(0, (skirtH * 0.5 - y) / skirtH);
+      const ang = Math.atan2(z, x);
+      const pleat = Math.sin(ang * 10.0 + 0.4) * 0.016 * drop;
+      const radScale = 1.0 + pleat * 4.5;
+      sPos.setXYZ(i, x * radScale * 1.06, y, z * radScale * 0.86);
+    }
+    skirtGeo.computeVertexNormals();
+    const skirtMat = topMat.clone();
+    skirtMat.side = THREE.DoubleSide;
+    const skirt = new THREE.Mesh(skirtGeo, skirtMat);
     skirt.position.y = -0.22;
     skirt.castShadow = true;
+    skirt.receiveShadow = true;
     pelvis.add(skirt);
   }
 
-  // Neck + Head
-  const neck = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.048, 0.054, 0.1, 14),
-    skinMat
+  // Sculpted Neck + Head
+  const neckGeo = createContouredLathe(
+    [[0.058, -0.02], [0.049, 0.024], [0.046, 0.056], [0.050, 0.080]],
+    14,
+    0.94,
+    0.90
   );
-  neck.position.y = torsoH + 0.04;
+  const neck = new THREE.Mesh(neckGeo, skinMat);
+  neck.position.y = torsoH - 0.018;
   neck.castShadow = true;
   torso.add(neck);
 
   const headGroup = new THREE.Group();
-  headGroup.position.y = torsoH + headCenterOffset - 0.02;
+  headGroup.position.y = torsoH + headCenterOffset;
   torso.add(headGroup);
 
-  // Sculpted head + jawline
-  const cranium = new THREE.Mesh(
-    new THREE.SphereGeometry(0.106, 22, 20),
-    skinMat
-  );
-  cranium.scale.set(0.92, 1.12, 0.98);
+  // Single continuous contoured head & jawline LatheGeometry (eliminates cranium/jaw seam Z-fighting)
+  const headProfile = [
+    [0.018, -0.095],
+    [0.044, -0.088],
+    [0.068, -0.066],
+    [0.086, -0.034],
+    [0.095, 0.006],
+    [0.096, 0.044],
+    [0.085, 0.082],
+    [0.056, 0.108],
+    [0.018, 0.118],
+  ];
+  const headGeo = createContouredLathe(headProfile, 26, 0.92, 0.99);
+  const hPos = headGeo.getAttribute('position');
+  for (let i = 0; i < hPos.count; i++) {
+    const vx = hPos.getX(i);
+    const vy = hPos.getY(i);
+    const vz = hPos.getZ(i);
+    // Gentle forward chin and cheek definition in -0.09..0.01 band without overlapping meshes
+    if (vz > 0 && vy < 0.015) {
+      const chinFactor = Math.max(0, 1 - Math.abs(vy + 0.068) / 0.055);
+      hPos.setZ(i, vz + chinFactor * 0.007 * (1 - Math.min(1, Math.abs(vx) / 0.06)));
+    }
+  }
+  headGeo.computeVertexNormals();
+  const cranium = new THREE.Mesh(headGeo, skinMat);
   cranium.castShadow = true;
   headGroup.add(cranium);
 
-  // Subtle nose
-  const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(0.013, 0.038, 8),
-    skinMat
-  );
-  nose.rotation.x = Math.PI * 0.42;
-  nose.position.set(0, -0.008, 0.106);
-  headGroup.add(nose);
+  // Contoured Nose (bridge + tip)
+  const noseBridge = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.036, 0.018), skinMat);
+  noseBridge.position.set(0, 0.004, 0.098);
+  noseBridge.rotation.x = -0.24;
+  headGroup.add(noseBridge);
 
-  // Muted natural lips
-  const lips = new THREE.Mesh(
-    new THREE.SphereGeometry(0.02, 12, 8),
-    lipMat
-  );
-  lips.scale.set(1.25, 0.42, 0.55);
-  lips.position.set(0, -0.048, 0.092);
-  headGroup.add(lips);
+  const noseTip = new THREE.Mesh(new THREE.SphereGeometry(0.011, 10, 8), skinMat);
+  noseTip.scale.set(1.05, 0.82, 1.0);
+  noseTip.position.set(0, -0.014, 0.106);
+  headGroup.add(noseTip);
 
-  // Ears (+ earrings on female)
+  // Contoured upper/lower lips
+  const upperLip = new THREE.Mesh(new THREE.SphereGeometry(0.016, 12, 8), lipMat);
+  upperLip.scale.set(1.38, 0.36, 0.52);
+  upperLip.position.set(0, -0.044, 0.091);
+  headGroup.add(upperLip);
+
+  const lowerLip = new THREE.Mesh(new THREE.SphereGeometry(0.015, 12, 8), lipMat);
+  lowerLip.scale.set(1.22, 0.4, 0.55);
+  lowerLip.position.set(0, -0.052, 0.089);
+  headGroup.add(lowerLip);
+
+  // Ears & earrings
   const earringMat = new THREE.MeshStandardMaterial({
     color: '#D7B46E',
-    roughness: 0.28,
-    metalness: 0.82,
+    roughness: 0.25,
+    metalness: 0.85,
   });
   for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 10), skinMat);
-    ear.scale.set(0.45, 1.0, 0.72);
-    ear.position.set(side * 0.096, -0.008, -0.006);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.021, 10, 10), skinMat);
+    ear.scale.set(0.42, 0.96, 0.72);
+    ear.position.set(side * 0.092, -0.006, -0.008);
     headGroup.add(ear);
     if (!isMale) {
-      const earring = new THREE.Mesh(new THREE.SphereGeometry(0.007, 8, 8), earringMat);
-      earring.position.set(side * 0.098, -0.032, -0.004);
+      const earring = new THREE.Mesh(new THREE.SphereGeometry(0.0068, 8, 8), earringMat);
+      earring.position.set(side * 0.094, -0.029, -0.004);
       headGroup.add(earring);
     }
   }
 
-  // Eyes with sclera, iris, pupil, eyebrows, and animated blinking eyelids
+  // Expressive Eyes + Brows + Blinking Eyelids
   const eyelids = [];
   for (const side of [-1, 1]) {
     const eyePivot = new THREE.Group();
-    eyePivot.position.set(side * 0.035, 0.015, 0.089);
+    eyePivot.position.set(side * 0.033, 0.015, 0.088);
     headGroup.add(eyePivot);
 
-    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.014, 12, 10), scleraMat);
-    sclera.scale.set(1.05, 0.88, 0.68);
+    const sclera = new THREE.Mesh(new THREE.SphereGeometry(0.0138, 12, 10), scleraMat);
+    sclera.scale.set(1.08, 0.86, 0.65);
     eyePivot.add(sclera);
 
-    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.0085, 12, 10), irisMat);
-    iris.scale.set(1, 1, 0.55);
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.0082, 12, 10), irisMat);
+    iris.scale.set(1, 1, 0.52);
     iris.position.z = 0.0065;
     eyePivot.add(iris);
 
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.0042, 10, 8), pupilMat);
-    pupil.position.z = 0.0095;
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.004, 10, 8), pupilMat);
+    pupil.position.z = 0.0094;
     eyePivot.add(pupil);
 
     const lid = new THREE.Mesh(
-      new THREE.SphereGeometry(0.0155, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      new THREE.SphereGeometry(0.0148, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42),
       skinMat
     );
-    lid.rotation.x = -0.35;
-    lid.scale.set(1.05, 0.9, 0.75);
+    lid.rotation.x = -0.32;
+    lid.scale.set(1.08, 0.9, 0.72);
     eyePivot.add(lid);
     eyelids.push(lid);
 
-    // Eyebrow
-    const brow = new THREE.Mesh(
-      new THREE.BoxGeometry(0.03, 0.006, 0.008),
-      hairMat
-    );
-    brow.position.set(side * 0.035, 0.037, 0.095);
-    brow.rotation.z = side * -0.08;
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.0045, 0.007), hairMat);
+    brow.position.set(side * 0.033, 0.035, 0.094);
+    brow.rotation.z = side * -0.09;
     headGroup.add(brow);
   }
 
-  // Layered wavy hair (not a flat sphere)
+  // Sculpted Curved Hair Locks & Waves (crown tilted cleanly back so eyes/brows remain visible)
   const hairGroup = new THREE.Group();
   headGroup.add(hairGroup);
 
   const hairCrown = new THREE.Mesh(
-    new THREE.SphereGeometry(0.112, 18, 16, 0, Math.PI * 2, 0, Math.PI * 0.62),
+    new THREE.SphereGeometry(0.106, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.48),
     hairMat
   );
-  hairCrown.scale.set(0.95, 1.08, 1.02);
-  hairCrown.position.set(0, 0.015, -0.008);
+  hairCrown.scale.set(0.94, 1.04, 1.01);
+  hairCrown.rotation.x = -0.34;
+  hairCrown.position.set(0, 0.026, -0.015);
   hairCrown.castShadow = true;
   hairGroup.add(hairCrown);
 
   if (isMale) {
-    // Textured short wavy crown locks & neat tapered sides
-    for (let i = 0; i < 8; i++) {
-      const tuft = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.02, 0.045, 4, 8),
-        hairMat
-      );
-      const a = (i / 8) * Math.PI * 1.4 - Math.PI * 0.7;
-      tuft.position.set(Math.sin(a) * 0.068, 0.088 + (i % 2) * 0.01, Math.cos(a) * 0.064);
-      tuft.rotation.set(0.55, a, 0.22);
-      hairGroup.add(tuft);
+    // Sculpted swept-back dark brown-black locks closely hugging scalp & clean nape fade
+    for (let i = 0; i < 7; i++) {
+      const xOff = (i - 3) * 0.0165;
+      const arch = Math.abs(xOff) * 0.25;
+      const lockCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(xOff * 0.78, 0.08 - arch * 0.25, 0.044 - arch),
+        new THREE.Vector3(xOff * 0.88, 0.118 - arch * 0.35, 0.002),
+        new THREE.Vector3(xOff * 0.86, 0.068 - arch * 0.3, -0.086),
+      ]);
+      const lock = new THREE.Mesh(new THREE.TubeGeometry(lockCurve, 10, 0.010, 7, false), hairMat);
+      lock.castShadow = true;
+      hairGroup.add(lock);
     }
     const backHair = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.096, 0.082, 0.11, 14),
+      createContouredLathe([[0.066, -0.055], [0.088, 0.0], [0.094, 0.042]], 16, 0.92, 0.96),
       hairMat
     );
-    backHair.position.set(0, -0.02, -0.032);
+    backHair.position.set(0, -0.018, -0.028);
     hairGroup.add(backHair);
   } else {
-    // Long softly wavy layered hair reaching mid-back without clipping shoulders
+    // Silky smooth inner hair cape + tapered layered wavy locks cascading over shoulders & back
     const backCascade = new THREE.Group();
-    backCascade.position.set(0, 0.01, -0.072);
+    backCascade.position.set(0, 0.028, -0.036);
     hairGroup.add(backCascade);
 
-    for (let s = -3; s <= 3; s++) {
-      const strand = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.028, 0.34 - Math.abs(s) * 0.025, 6, 10),
-        hairMat
-      );
-      strand.position.set(s * 0.028, -0.18, -Math.abs(s) * 0.006);
-      strand.rotation.x = 0.18;
-      strand.rotation.z = s * 0.05;
+    const capeGeo = new THREE.CylinderGeometry(0.088, 0.118, 0.38, 18, 8, false, Math.PI * 0.56, Math.PI * 0.88);
+    const capePos = capeGeo.getAttribute('position');
+    for (let i = 0; i < capePos.count; i++) {
+      const vx = capePos.getX(i);
+      const vy = capePos.getY(i);
+      const vz = capePos.getZ(i);
+      const u = (0.19 - vy) / 0.38;
+      const waveZ = -Math.sin(u * Math.PI * 2.2) * 0.012 - u * 0.026;
+      const uTaper = 1.0 - Math.max(0, (u - 0.65) / 0.35) * 0.16;
+      capePos.setXYZ(i, vx * uTaper, vy, vz * 0.82 + waveZ);
+    }
+    capeGeo.computeVertexNormals();
+    const capeMat = hairMat.clone();
+    capeMat.side = THREE.DoubleSide;
+    const hairCape = new THREE.Mesh(capeGeo, capeMat);
+    hairCape.position.set(0, -0.175, -0.018);
+    hairCape.castShadow = true;
+    backCascade.add(hairCape);
+
+    for (let s = -6; s <= 6; s++) {
+      const tx = s * 0.0145;
+      const edgeT = (s / 6) * (s / 6);
+      const waveLen = 0.38 - edgeT * 0.08;
+      const zCurve = -0.035 + edgeT * 0.014;
+      const strandCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(tx * 0.68, 0.032, zCurve + 0.018),
+        new THREE.Vector3(tx * 1.02, -waveLen * 0.32, zCurve - 0.014),
+        new THREE.Vector3(tx * 1.12, -waveLen * 0.68, zCurve - 0.004),
+        new THREE.Vector3(tx * 1.02, -waveLen, zCurve - 0.022),
+      ]);
+      const strand = new THREE.Mesh(new THREE.TubeGeometry(strandCurve, 14, 0.014, 7, false), hairMat);
       strand.castShadow = true;
       backCascade.add(strand);
     }
-    // Side framing waves
+
+    // Soft side-parted temple wisps keeping eyes completely open
     for (const side of [-1, 1]) {
-      const sideWave = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.022, 0.17, 5, 8),
-        hairMat
-      );
-      sideWave.position.set(side * 0.094, -0.05, 0.02);
-      sideWave.rotation.z = side * -0.1;
-      hairGroup.add(sideWave);
+      const fCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(side * 0.038, 0.088, 0.054),
+        new THREE.Vector3(side * 0.088, 0.032, 0.042),
+        new THREE.Vector3(side * 0.095, -0.068, 0.016),
+      ]);
+      hairGroup.add(new THREE.Mesh(new THREE.TubeGeometry(fCurve, 10, 0.012, 7, false), hairMat));
     }
     hairGroup.userData.backCascade = backCascade;
   }
 
-  // Arms (left/right pivots at shoulder width)
+  // Contoured Arms tucked seamlessly into torso shoulders with Articulated Palm & Fingers
   function createArm(side) {
     const pivot = new THREE.Group();
-    pivot.position.set(side * (shoulderW * 0.5), torsoH - 0.055, 0);
+    pivot.position.set(side * (shoulderW * 0.375), torsoH - 0.072, 0);
     torso.add(pivot);
 
-    // Rolled sleeve upper arm
-    const sleeveLen = isMale ? 0.24 : 0.20;
-    const upperArm = new THREE.Mesh(
-      new THREE.CapsuleGeometry(isMale ? 0.044 : 0.037, sleeveLen, 6, 10),
-      topMat
-    );
-    upperArm.position.y = -sleeveLen * 0.55;
+    // Subtle integrated shoulder deltoid transition blending cleanly into torso
+    const shoulderCap = new THREE.Mesh(new THREE.SphereGeometry(isMale ? 0.036 : 0.030, 14, 12), topMat);
+    shoulderCap.scale.set(0.76, 0.72, 0.84);
+    pivot.add(shoulderCap);
+
+    // Tapered upper sleeve / upper arm
+    const sleeveLen = isMale ? 0.25 : 0.21;
+    const upperProfile = [
+      [isMale ? 0.040 : 0.034, -sleeveLen],
+      [isMale ? 0.042 : 0.035, -sleeveLen * 0.55],
+      [isMale ? 0.041 : 0.034, -0.02],
+      [isMale ? 0.036 : 0.030, 0.0],
+    ];
+    const upperArm = new THREE.Mesh(createContouredLathe(upperProfile, 14), topMat);
     upperArm.castShadow = true;
     pivot.add(upperArm);
 
     if (isMale) {
-      const cuff = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.047, 0.045, 0.028, 12),
-        topMat
-      );
-      cuff.position.y = -sleeveLen - 0.01;
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.041, 0.028, 14), topMat);
+      cuff.position.y = -sleeveLen;
       pivot.add(cuff);
     }
 
     const elbow = new THREE.Group();
-    elbow.position.y = -0.26;
+    elbow.position.y = -sleeveLen + 0.01;
     pivot.add(elbow);
 
-    const forearm = new THREE.Mesh(
-      new THREE.CapsuleGeometry(isMale ? 0.036 : 0.03, 0.22, 6, 10),
-      skinMat
-    );
-    forearm.position.y = -0.11;
+    const elbowJoint = new THREE.Mesh(new THREE.SphereGeometry(isMale ? 0.034 : 0.028, 10, 8), skinMat);
+    elbow.add(elbowJoint);
+
+    const forearmProfile = [
+      [isMale ? 0.025 : 0.022, -0.24],
+      [isMale ? 0.031 : 0.027, -0.14],
+      [isMale ? 0.036 : 0.030, -0.04],
+      [isMale ? 0.034 : 0.028, 0.0],
+    ];
+    const forearm = new THREE.Mesh(createContouredLathe(forearmProfile, 14), skinMat);
     forearm.castShadow = true;
     elbow.add(forearm);
 
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.034, 10, 10), skinMat);
-    hand.scale.set(0.85, 1.3, 0.55);
-    hand.position.y = -0.25;
-    elbow.add(hand);
+    // Articulated Hand: palm + angled thumb + 3 finger groups
+    const handGroup = new THREE.Group();
+    handGroup.position.set(0, -0.235, 0);
+    elbow.add(handGroup);
 
-    // Simple wristwatch on male left arm
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.068, 0.048), skinMat);
+    palm.position.y = -0.032;
+    handGroup.add(palm);
+
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.007, 0.028, 4, 6), skinMat);
+    thumb.position.set(side * -0.008, -0.028, 0.028);
+    thumb.rotation.x = 0.55;
+    handGroup.add(thumb);
+
+    for (let f = 0; f < 3; f++) {
+      const fLen = 0.044 - Math.abs(f - 1) * 0.005;
+      const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.0065, fLen, 4, 6), skinMat);
+      finger.position.set(0, -0.072 - fLen * 0.25, -0.014 + f * 0.014);
+      handGroup.add(finger);
+    }
+
+    // Dark-strap wristwatch on male left arm
     if (isMale && side === -1) {
       const strap = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.038, 0.038, 0.024, 12),
+        new THREE.CylinderGeometry(0.03, 0.03, 0.024, 14),
         new THREE.MeshStandardMaterial({ color: '#2B211B', roughness: 0.7 })
       );
       strap.position.y = -0.205;
       elbow.add(strap);
       const face = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.016, 0.016, 0.008, 12),
-        new THREE.MeshStandardMaterial({ color: '#D6C4A4', roughness: 0.35, metalness: 0.6 })
+        new THREE.CylinderGeometry(0.015, 0.015, 0.008, 12),
+        new THREE.MeshStandardMaterial({ color: '#D6C4A4', roughness: 0.3, metalness: 0.65 })
       );
       face.rotation.z = Math.PI * 0.5;
-      face.position.set(-0.036, -0.205, 0.008);
+      face.position.set(-0.028, -0.205, 0.006);
       elbow.add(face);
     }
 
@@ -359,57 +489,60 @@ export function createCharacterRig(variant = 'female') {
   const leftArm = createArm(-1);
   const rightArm = createArm(1);
 
-  // Legs
+  // Contoured Legs + Structured Leather Shoes / Flats
   function createLeg(side) {
     const hip = new THREE.Group();
-    hip.position.set(side * (isMale ? 0.095 : 0.085), -0.02, 0);
+    hip.position.set(side * (isMale ? 0.094 : 0.084), -0.02, 0);
     pelvis.add(hip);
 
     const legMat = isMale ? bottomOrAccentMat : skinMat;
     const thighLen = hipHeight * 0.45;
-    const thigh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(isMale ? 0.062 : 0.052, thighLen, 6, 12),
-      legMat
-    );
-    thigh.position.y = -thighLen * 0.5;
+    const thighProfile = isMale
+      ? [[0.058, -thighLen - 0.015], [0.068, -thighLen * 0.5], [0.076, -0.02], [0.068, 0.02]]
+      : [[0.045, -thighLen - 0.015], [0.056, -thighLen * 0.5], [0.066, -0.02], [0.058, 0.02]];
+    const thigh = new THREE.Mesh(createContouredLathe(thighProfile, 16), legMat);
     thigh.castShadow = true;
     hip.add(thigh);
 
     const knee = new THREE.Group();
-    knee.position.y = -thighLen - 0.02;
+    knee.position.y = -thighLen;
     hip.add(knee);
 
+    const kneeJoint = new THREE.Mesh(new THREE.SphereGeometry(isMale ? 0.056 : 0.044, 12, 10), legMat);
+    knee.add(kneeJoint);
+
     const calfLen = hipHeight * 0.43;
-    const calf = new THREE.Mesh(
-      new THREE.CapsuleGeometry(isMale ? 0.048 : 0.041, calfLen, 6, 12),
-      legMat
-    );
-    calf.position.y = -calfLen * 0.5;
+    const calfProfile = isMale
+      ? [[0.046, -calfLen], [0.054, -calfLen * 0.45], [0.058, -0.08], [0.056, 0.022]]
+      : [[0.032, -calfLen], [0.045, -calfLen * 0.42], [0.047, -0.08], [0.045, 0.022]];
+    const calf = new THREE.Mesh(createContouredLathe(calfProfile, 16), legMat);
     calf.castShadow = true;
     knee.add(calf);
 
-    // Foot + sole matching 0.27 m male / 0.24 m female foot length
+    // Sculpted shoe (derby/loafed profile with rounded toe & stacked heel)
     const footLen = isMale ? 0.27 : 0.24;
     const footGroup = new THREE.Group();
-    footGroup.position.set(0, -calfLen - 0.025, 0.04);
+    footGroup.position.set(0, -calfLen - 0.03, 0.038);
     knee.add(footGroup);
 
-    const shoe = new THREE.Mesh(
-      new THREE.BoxGeometry(0.095, 0.055, footLen),
+    const vamp = new THREE.Mesh(
+      new THREE.CapsuleGeometry(isMale ? 0.044 : 0.039, footLen * 0.45, 6, 12),
       shoeMat
     );
-    shoe.position.y = 0.028;
-    shoe.castShadow = true;
-    footGroup.add(shoe);
+    vamp.rotation.x = Math.PI / 2;
+    vamp.scale.set(1.02, 0.65, 1.0);
+    vamp.position.set(0, 0.032, 0.01);
+    vamp.castShadow = true;
+    footGroup.add(vamp);
 
-    if (isMale) {
-      const sole = new THREE.Mesh(
-        new THREE.BoxGeometry(0.098, 0.018, footLen + 0.006),
-        soleMat
-      );
-      sole.position.y = 0.008;
-      footGroup.add(sole);
-    }
+    const sole = new THREE.Mesh(
+      new THREE.CapsuleGeometry(isMale ? 0.046 : 0.041, footLen * 0.48, 4, 12),
+      soleMat
+    );
+    sole.rotation.x = Math.PI / 2;
+    sole.scale.set(1.04, 0.26, 1.0);
+    sole.position.set(0, 0.011, 0.01);
+    footGroup.add(sole);
 
     return { hip, knee, footGroup };
   }
@@ -417,7 +550,7 @@ export function createCharacterRig(variant = 'female') {
   const leftLeg = createLeg(-1);
   const rightLeg = createLeg(1);
 
-  // Selection ground ring (subtle antique brass halo on start screen)
+  // Selection ground ring (antique brass halo on start screen)
   const halo = new THREE.Mesh(
     new THREE.RingGeometry(0.36, 0.43, 36),
     new THREE.MeshBasicMaterial({
@@ -432,42 +565,60 @@ export function createCharacterRig(variant = 'female') {
   root.add(halo);
 
   let walkPhase = 0;
+  let sitBlend = 0;
+  let doorGestureTimer = 0;
   let blinkTimer = 2.0 + Math.random() * 2.5;
+
+  function triggerDoorGesture() {
+    doorGestureTimer = 0.52;
+  }
 
   function update(dt, optionsOrElapsed = 0, speedParam = 0, seatedParam = false) {
     let speed = 0;
     let seated = false;
     let highlighted = false;
+    let hideHalo = false;
     let time = 0;
 
     if (optionsOrElapsed && typeof optionsOrElapsed === 'object') {
       speed = optionsOrElapsed.speed ?? 0;
       seated = optionsOrElapsed.seated ?? false;
       highlighted = optionsOrElapsed.highlighted ?? false;
+      hideHalo = optionsOrElapsed.hideHalo ?? false;
       time = optionsOrElapsed.time ?? 0;
+      if (optionsOrElapsed.doorGesture) triggerDoorGesture();
     } else {
       time = typeof optionsOrElapsed === 'number' ? optionsOrElapsed : 0;
       speed = typeof speedParam === 'number' ? speedParam : 0;
       seated = Boolean(seatedParam);
+      hideHalo = true;
     }
-    halo.material.opacity = THREE.MathUtils.lerp(
-      halo.material.opacity,
-      highlighted ? 0.62 : 0.0,
-      Math.min(1, dt * 8)
-    );
 
-    // Periodic blinking
+    if (hideHalo) {
+      halo.material.opacity = 0;
+      halo.visible = false;
+    } else {
+      halo.material.opacity = THREE.MathUtils.lerp(
+        halo.material.opacity,
+        highlighted ? 0.62 : 0.0,
+        Math.min(1, dt * 8)
+      );
+      halo.visible = halo.material.opacity > 0.01;
+    }
+
+    // Periodic natural blinking
     blinkTimer -= dt;
-    let lidScaleY = 0.08;
+    let blinkAmt = 0;
     if (blinkTimer <= 0) {
       if (blinkTimer > -0.14) {
-        lidScaleY = Math.sin(((0.14 + blinkTimer) / 0.14) * Math.PI) * 1.15;
+        blinkAmt = Math.sin(((0.14 + blinkTimer) / 0.14) * Math.PI);
       } else {
         blinkTimer = 3.2 + Math.random() * 2.8;
       }
     }
     for (const lid of eyelids) {
-      lid.scale.y = Math.max(0.08, lidScaleY);
+      lid.rotation.x = -0.34 + blinkAmt * 0.72;
+      lid.scale.y = 0.86 + blinkAmt * 0.28;
     }
 
     // Idle breathing + gentle head micro-motion
@@ -477,56 +628,80 @@ export function createCharacterRig(variant = 'female') {
     headGroup.rotation.x = Math.sin(time * 0.55) * 0.03;
 
     if (hairGroup.userData.backCascade) {
-      hairGroup.userData.backCascade.rotation.x = 0.05 + Math.sin(time * 1.8) * 0.025 + Math.min(0.18, speed * 0.04);
+      hairGroup.userData.backCascade.rotation.x =
+        0.04 + Math.sin(time * 1.8) * 0.025 + Math.min(0.18, speed * 0.04);
     }
 
-    if (seated) {
-      pelvis.position.y = hipHeight * 0.56;
-      leftLeg.hip.rotation.x = -Math.PI * 0.48;
-      rightLeg.hip.rotation.x = -Math.PI * 0.48;
-      leftLeg.knee.rotation.x = Math.PI * 0.48;
-      rightLeg.knee.rotation.x = Math.PI * 0.48;
-      leftArm.pivot.rotation.x = -0.35;
-      rightArm.pivot.rotation.x = -0.35;
-      leftArm.elbow.rotation.x = -0.55;
-      rightArm.elbow.rotation.x = -0.55;
-      return;
+    // Smooth Sit / Stand Transition Blend
+    sitBlend = THREE.MathUtils.lerp(sitBlend, seated ? 1 : 0, Math.min(1, dt * 10));
+
+    let targetPelvisY = hipHeight;
+    let targetHipL = 0;
+    let targetHipR = 0;
+    let targetKneeL = 0;
+    let targetKneeR = 0;
+    let targetArmL = Math.sin(time * 1.4) * 0.03;
+    let targetArmR = -Math.sin(time * 1.4) * 0.03;
+    let targetElbowL = -0.14;
+    let targetElbowR = -0.14;
+    let targetTorsoTwist = 0;
+
+    if (speed > 0.2 && sitBlend < 0.35) {
+      // Walk & faster walk gait scaled smoothly by displacement speed
+      const strideRate = speed > 3.0 ? 3.55 : 3.25;
+      walkPhase += dt * speed * strideRate;
+      const amp = Math.min(0.62, 0.25 + speed * 0.11);
+      const swing = Math.sin(walkPhase) * amp;
+      const bob = Math.abs(Math.cos(walkPhase)) * 0.024;
+      targetPelvisY = hipHeight + bob;
+      targetHipL = swing;
+      targetHipR = -swing;
+      targetKneeL = Math.max(0, -Math.cos(walkPhase) * (0.42 + speed * 0.04));
+      targetKneeR = Math.max(0, Math.cos(walkPhase) * (0.42 + speed * 0.04));
+      targetArmL = -swing * 0.74;
+      targetArmR = swing * 0.74;
+      targetElbowL = -0.26 - Math.max(0, swing * 0.18);
+      targetElbowR = -0.26 + Math.max(0, -swing * 0.18);
+      targetTorsoTwist = swing * 0.08;
     }
 
-    if (speed > 0.2) {
-      // Stride synced with player displacement speed
-      walkPhase += dt * speed * 3.35;
-      const swing = Math.sin(walkPhase) * Math.min(0.55, 0.25 + speed * 0.1);
-      const bob = Math.abs(Math.cos(walkPhase)) * 0.025;
-      pelvis.position.y = hipHeight + bob;
-
-      leftLeg.hip.rotation.x = swing;
-      rightLeg.hip.rotation.x = -swing;
-      leftLeg.knee.rotation.x = Math.max(0, -Math.cos(walkPhase) * 0.45);
-      rightLeg.knee.rotation.x = Math.max(0, Math.cos(walkPhase) * 0.45);
-
-      leftArm.pivot.rotation.x = -swing * 0.72;
-      rightArm.pivot.rotation.x = swing * 0.72;
-      leftArm.elbow.rotation.x = -0.25;
-      rightArm.elbow.rotation.x = -0.25;
-    } else {
-      pelvis.position.y = THREE.MathUtils.lerp(pelvis.position.y, hipHeight, Math.min(1, dt * 10));
-      leftLeg.hip.rotation.x = THREE.MathUtils.lerp(leftLeg.hip.rotation.x, 0, Math.min(1, dt * 10));
-      rightLeg.hip.rotation.x = THREE.MathUtils.lerp(rightLeg.hip.rotation.x, 0, Math.min(1, dt * 10));
-      leftLeg.knee.rotation.x = THREE.MathUtils.lerp(leftLeg.knee.rotation.x, 0, Math.min(1, dt * 10));
-      rightLeg.knee.rotation.x = THREE.MathUtils.lerp(rightLeg.knee.rotation.x, 0, Math.min(1, dt * 10));
-
-      const idleArm = Math.sin(time * 1.4) * 0.03;
-      leftArm.pivot.rotation.x = THREE.MathUtils.lerp(leftArm.pivot.rotation.x, idleArm, Math.min(1, dt * 8));
-      rightArm.pivot.rotation.x = THREE.MathUtils.lerp(rightArm.pivot.rotation.x, -idleArm, Math.min(1, dt * 8));
-      leftArm.elbow.rotation.x = -0.12;
-      rightArm.elbow.rotation.x = -0.12;
+    if (sitBlend > 0.001) {
+      targetPelvisY = THREE.MathUtils.lerp(targetPelvisY, hipHeight * 0.56, sitBlend);
+      targetHipL = THREE.MathUtils.lerp(targetHipL, -Math.PI * 0.48, sitBlend);
+      targetHipR = THREE.MathUtils.lerp(targetHipR, -Math.PI * 0.48, sitBlend);
+      targetKneeL = THREE.MathUtils.lerp(targetKneeL, Math.PI * 0.48, sitBlend);
+      targetKneeR = THREE.MathUtils.lerp(targetKneeR, Math.PI * 0.48, sitBlend);
+      targetArmL = THREE.MathUtils.lerp(targetArmL, -0.35, sitBlend);
+      targetArmR = THREE.MathUtils.lerp(targetArmR, -0.35, sitBlend);
+      targetElbowL = THREE.MathUtils.lerp(targetElbowL, -0.58, sitBlend);
+      targetElbowR = THREE.MathUtils.lerp(targetElbowR, -0.58, sitBlend);
     }
+
+    // Optional door lever reach gesture on right arm
+    if (doorGestureTimer > 0) {
+      doorGestureTimer = Math.max(0, doorGestureTimer - dt);
+      const reach = Math.sin((doorGestureTimer / 0.52) * Math.PI);
+      targetArmR = THREE.MathUtils.lerp(targetArmR, -0.95, reach);
+      targetElbowR = THREE.MathUtils.lerp(targetElbowR, -0.55, reach);
+    }
+
+    const blendRate = Math.min(1, dt * 12);
+    pelvis.position.y = THREE.MathUtils.lerp(pelvis.position.y, targetPelvisY, blendRate);
+    torso.rotation.y = THREE.MathUtils.lerp(torso.rotation.y, targetTorsoTwist, blendRate);
+    leftLeg.hip.rotation.x = THREE.MathUtils.lerp(leftLeg.hip.rotation.x, targetHipL, blendRate);
+    rightLeg.hip.rotation.x = THREE.MathUtils.lerp(rightLeg.hip.rotation.x, targetHipR, blendRate);
+    leftLeg.knee.rotation.x = THREE.MathUtils.lerp(leftLeg.knee.rotation.x, targetKneeL, blendRate);
+    rightLeg.knee.rotation.x = THREE.MathUtils.lerp(rightLeg.knee.rotation.x, targetKneeR, blendRate);
+    leftArm.pivot.rotation.x = THREE.MathUtils.lerp(leftArm.pivot.rotation.x, targetArmL, blendRate);
+    rightArm.pivot.rotation.x = THREE.MathUtils.lerp(rightArm.pivot.rotation.x, targetArmR, blendRate);
+    leftArm.elbow.rotation.x = THREE.MathUtils.lerp(leftArm.elbow.rotation.x, targetElbowL, blendRate);
+    rightArm.elbow.rotation.x = THREE.MathUtils.lerp(rightArm.elbow.rotation.x, targetElbowR, blendRate);
   }
 
   return {
     root,
     totalHeight,
     update,
+    triggerDoorGesture,
   };
 }
