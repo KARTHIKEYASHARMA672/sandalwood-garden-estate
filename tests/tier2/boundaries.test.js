@@ -13,7 +13,8 @@ import {
 import { CollisionSystem } from '../../src/gameplay/CollisionSystem.js';
 import { CameraController } from '../../src/gameplay/CameraController.js';
 import { createMockCanvas } from '../harness/mockEnv.js';
-import { DISCOVERY_ZONES } from '../../src/state/gameStore.js';
+import { DISCOVERY_ZONES, gameStore } from '../../src/state/gameStore.js';
+import { createFlowerBeds } from '../../src/world/FlowerBeds.js';
 
 describe('Tier 2: Boundary, Precision & Coordinate Constraints', () => {
   // Category 1: Spatial Bounds & Perimeter Clamping
@@ -312,6 +313,80 @@ describe('Tier 2: Boundary, Precision & Coordinate Constraints', () => {
 
       const balconyZone = detectZoneAt(-3.0, 3.95, -9.8);
       expect(balconyZone.zoneId).toBe('balcony');
+    });
+  });
+
+  // Category 8: Companion Waypoints, Camera Pull-In Damping & Botanical Integrity
+  describe('Companion Waypoints, Camera Damping & Botanical Integrity', () => {
+    it('verifies West-Garden companion stroll waypoints stay strictly clear of house, porch, pathway, and beds', () => {
+      const flowerSystem = createFlowerBeds();
+      const bedColliders = flowerSystem.colliders || [];
+      const waypoints = [
+        { x: -7.8, z: 14.8 },
+        { x: -8.4, z: 22.5 },
+        { x: -8.4, z: 31.2 },
+        { x: -6.8, z: 38.5 },
+        { x: -13.2, z: 33.5 },
+        { x: -13.5, z: 16.5 },
+      ];
+
+      for (const wp of waypoints) {
+        const insideHouseOrPorch =
+          wp.x >= WORLD_DIMENSIONS.houseMinX - 0.5 &&
+          wp.x <= WORLD_DIMENSIONS.houseMaxX + 0.5 &&
+          wp.z >= WORLD_DIMENSIONS.houseMinZ - 0.5 &&
+          wp.z <= WORLD_DIMENSIONS.porchMaxZ + 0.5;
+        expect(insideHouseOrPorch).toBe(false);
+        expect(Math.abs(wp.x - WORLD_DIMENSIONS.pathwayCenterX)).toBeGreaterThan(2.5);
+
+        for (const bed of bedColliders) {
+          const overlapsBed =
+            wp.x >= bed.minX && wp.x <= bed.maxX && wp.z >= bed.minZ && wp.z <= bed.maxZ;
+          expect(overlapsBed).toBe(false);
+        }
+      }
+      expect(flowerSystem.getFlowerCount()).toBe(540);
+    });
+
+    it('clamps 3rd-person camera inward immediately on occlusion and smoothly recovers outward', () => {
+      const canvas = createMockCanvas();
+      const camera = new THREE.PerspectiveCamera();
+      const col = new CollisionSystem();
+      const ctrl = new CameraController(camera, canvas, col);
+      gameStore.setState({ screen: 'playing', thirdPerson: true });
+
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 0.25), new THREE.MeshBasicMaterial());
+      wall.position.set(0, 2, 0);
+      wall.updateMatrixWorld(true);
+      col.registerOccluder(wall);
+
+      ctrl.yaw = Math.PI;
+      ctrl.pitch = 0;
+      const closePos = new THREE.Vector3(0, 0.3, 0.55);
+      ctrl.update(closePos, false, 'female', 0.016);
+      const clampedDist = ctrl._safeCamDist;
+      expect(clampedDist).toBeLessThan(0.5);
+
+      // Remove occluder and verify recovery ramps smoothly instead of jumping instantaneously
+      col.occluders.length = 0;
+      ctrl.update(closePos, false, 'female', 0.016);
+      expect(ctrl._safeCamDist).toBeGreaterThan(clampedDist);
+      expect(ctrl._safeCamDist).toBeLessThan(2.6);
+      ctrl.dispose();
+    });
+
+    it('enforces exact X/Z coincidence between 1st-person camera and standing player position', () => {
+      const canvas = createMockCanvas();
+      const camera = new THREE.PerspectiveCamera();
+      const col = new CollisionSystem();
+      const ctrl = new CameraController(camera, canvas, col);
+      gameStore.setState({ screen: 'playing', thirdPerson: false });
+
+      const pPos = new THREE.Vector3(-4.12, 0.3, 6.48);
+      ctrl.update(pPos, false, 'male', 0.016);
+      expect(ctrl.camera.position.x).toBe(pPos.x);
+      expect(ctrl.camera.position.z).toBe(pPos.z);
+      ctrl.dispose();
     });
   });
 });

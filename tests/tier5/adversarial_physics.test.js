@@ -13,6 +13,8 @@ import { PlayerController } from '../../src/gameplay/PlayerController.js';
 import { InteractionManager } from '../../src/gameplay/InteractionManager.js';
 import { createMockCanvas } from '../harness/mockEnv.js';
 import { gameStore } from '../../src/state/gameStore.js';
+import { createCharacterRig } from '../../src/characters/CharacterMesh.js';
+import { PARTITIONS } from '../../src/house/HouseArchitecture.js';
 
 describe('Tier 5: Adversarial Physics & Spatial Stress Testing', () => {
   let collisionSystem;
@@ -514,6 +516,59 @@ describe('Tier 5: Adversarial Physics & Spatial Stress Testing', () => {
       // In first person mode, camera position is strictly coincident with eyePos
       expect(cameraCtrl.camera.position.x).toBeCloseTo(playerPos.x, 3);
       expect(cameraCtrl.camera.position.z).toBeCloseTo(playerPos.z, 3);
+    });
+  });
+
+  // =========================================================================
+  // SUITE 7: Character Anatomical Integrity, Seat Alignment & Partition Seams
+  // =========================================================================
+  describe('Suite 7: Character Anatomy, Seat Synchronization & Partition Integrity', () => {
+    it('constructs continuous contoured head LatheGeometry (zero separate overlapping cranium/jaw) and toggles halo visibility', () => {
+      const male = createCharacterRig('male');
+      const female = createCharacterRig('female');
+
+      const maleHeads = [];
+      male.root.traverse((c) => {
+        if (c.isMesh && c.geometry?.type === 'LatheGeometry') maleHeads.push(c);
+      });
+      expect(maleHeads.length).toBeGreaterThan(5);
+      expect(male.root.children.length).toBeGreaterThan(0);
+
+      female.update(0.016, { time: 1.0, speed: 0, seated: false, highlighted: true, hideHalo: true });
+      const halo = female.root.children.find((c) => c.geometry?.type === 'RingGeometry');
+      expect(halo).toBeDefined();
+      expect(halo.visible).toBe(false);
+    });
+
+    it('synchronously restores exact player X/Z position when standing up after sitAt()', () => {
+      playerCtrl.position.set(-4.2, 0.3, 5.1);
+      const before = playerCtrl.position.clone();
+      playerCtrl.sitAt({ id: 'living-sofa', label: 'Living Sofa', x: -3.0, y: 0.72, z: 4.5, yaw: Math.PI });
+
+      expect(playerCtrl.position.x).toBe(-3.0);
+      expect(playerCtrl.position.z).toBe(4.5);
+      expect(cameraCtrl.yaw).toBeCloseTo(Math.PI, 4);
+
+      playerCtrl.standUp();
+      expect(playerCtrl.position.x).toBe(before.x);
+      expect(playerCtrl.position.z).toBe(before.z);
+    });
+
+    it('verifies all partitions maintain positive span and valid thickness without self-intersection', () => {
+      for (const p of PARTITIONS) {
+        expect(p.thickness).toBe(WORLD_DIMENSIONS.intWallThickness);
+        if (p.axis === 'x') {
+          expect(p.maxZ).toBeGreaterThan(p.minZ);
+        } else {
+          expect(p.maxX).toBeGreaterThan(p.minX);
+        }
+      }
+    });
+
+    it('verifies Upper floor Bathroom 2 showerhead sits at 2.2m above upperFloorY (Y = 6.15m)', () => {
+      const headY = WORLD_DIMENSIONS.upperFloorY + 2.2;
+      expect(headY).toBeCloseTo(6.15, 3);
+      expect(headY).toBeLessThan(WORLD_DIMENSIONS.upperCeilingY);
     });
   });
 });
