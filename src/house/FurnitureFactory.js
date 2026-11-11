@@ -39,6 +39,7 @@ export class FurnitureFactory {
     this.seats = [];
     this.rooms = new Map();
     this.showers = {};
+    this.interiorLights = [];
   }
 
   /**
@@ -90,6 +91,7 @@ export class FurnitureFactory {
         interactables: this.interactables,
         seats: this.seats,
         showers: this.showers,
+        interiorLights: this.interiorLights,
         utensils: KITCHEN_UTENSIL_INVENTORY,
         cookware: KITCHEN_COOKWARE_INVENTORY,
         totalUtensils: 37,
@@ -127,6 +129,7 @@ export class FurnitureFactory {
       interactables: this.interactables,
       seats: this.seats,
       showers: this.showers,
+      interiorLights: this.interiorLights,
       utensilInventory: KITCHEN_UTENSIL_INVENTORY,
       cookwareInventory: KITCHEN_COOKWARE_INVENTORY,
       update: (delta, time) => this.update(delta, time),
@@ -134,7 +137,7 @@ export class FurnitureFactory {
   }
 
   /**
-   * Helper to aggregate room furnishings, colliders, seats, and interactables.
+   * Helper to aggregate room furnishings, colliders, seats, interactables, and interior lights.
    */
   registerRoom(id, roomGroup) {
     this.rooms.set(id, roomGroup);
@@ -149,6 +152,9 @@ export class FurnitureFactory {
       }
       if (roomGroup.userData.seats) {
         this.seats.push(...roomGroup.userData.seats);
+      }
+      if (Array.isArray(roomGroup.userData.interiorLights)) {
+        this.interiorLights.push(...roomGroup.userData.interiorLights);
       }
     }
   }

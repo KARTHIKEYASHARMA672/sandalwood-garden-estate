@@ -88,15 +88,26 @@ export class World {
       }
     }
 
-    // Apply initial lighting & weather profile across all newly registered fixtures
-    const initState = gameStore.getState();
-    this.dayNight.applyState(initState.timeOfDay, initState.weather);
-
     // 4. Interior domestic furnishings (all 12 zones, 37 utensils, 37 cookware, washer/dryer, showers)
     this.furnishings = buildAllRooms(this.house, {
       collisionSystem: this.collision,
       interactionManager: this.interaction,
     });
+
+    if (this.furnishings && Array.isArray(this.furnishings.interiorLights)) {
+      for (const intLight of this.furnishings.interiorLights) {
+        this.dayNight.registerInteriorLight(
+          intLight.light,
+          intLight.baseIntensity,
+          intLight.emissiveMat || null,
+          intLight.baseEmissive ?? 1.0
+        );
+      }
+    }
+
+    // Apply initial lighting & weather profile across both architecture and furnishings
+    const initState = gameStore.getState();
+    this.dayNight.applyState(initState.timeOfDay, initState.weather);
 
     // 5. Register seating interactables with player locomotion sit/stand
     this._registerSeatingInteractables();

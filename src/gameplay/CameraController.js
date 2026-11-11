@@ -126,11 +126,11 @@ export class CameraController {
       selectedCharacter === 'male'
         ? WORLD_DIMENSIONS.eyeHeightMale
         : WORLD_DIMENSIONS.eyeHeightFemale;
-    const eyeHeight = isSeated ? 1.15 : baseEye;
+    const eyeHeight = isSeated ? 0.78 : baseEye;
     this._eyePos.set(playerPos.x, playerPos.y + eyeHeight, playerPos.z);
 
-    if (!state.thirdPerson || isSeated) {
-      // Smooth 100ms sit glide when seated; keep strict X/Z coincidence when standing in 1st-person
+    if (!state.thirdPerson) {
+      // First-person look camera with smooth 100ms sit glide
       if (isSeated) {
         this._currentPos.lerp(this._eyePos, Math.min(1, dt * 18));
       } else {
@@ -160,9 +160,11 @@ export class CameraController {
 
       this._rayDir.subVectors(this._desired, this._eyePos);
       const fullDist = this._rayDir.length();
+      if (fullDist > 0.0001) {
+        this._rayDir.divideScalar(fullDist);
+      }
       let targetDist = fullDist;
       if (fullDist > 0.05 && this.collision.occluders.length > 0) {
-        this._rayDir.normalize();
         this._raycaster.set(this._eyePos, this._rayDir);
         this._raycaster.near = 0.1;
         this._raycaster.far = fullDist;

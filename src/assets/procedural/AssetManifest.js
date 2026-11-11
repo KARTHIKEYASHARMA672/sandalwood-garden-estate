@@ -7,6 +7,7 @@
 export const ASSET_MANIFEST = {
   textures: [
     { id: 'sandalwood-timber', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
+    { id: 'continuous-furniture-timber', type: 'Procedural CanvasTexture (Seamless Hardwood)', license: 'Original / Project-Authored' },
     { id: 'walnut-timber', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
     { id: 'honey-oak-floor', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
     { id: 'teak-decking', type: 'Procedural CanvasTexture', license: 'Original / Project-Authored' },
@@ -28,8 +29,8 @@ export const ASSET_MANIFEST = {
     { id: 'female-character-rig', heightMeters: 1.66, source: 'Original Hierarchical Procedural Mesh' },
     { id: 'flower-varieties-x7', countRange: '450-650', source: 'Original Curved-Petal Instanced Geometry' },
     { id: 'sandalwood-residence', footprintMeters: '24x18', source: 'Original Architectural Timber Builder' },
-    { id: 'interior-furnishings', rooms: 12, source: 'Original Measured Furniture & Appliance Builders' },
-    { id: 'room-props-lathe-chamfered', categories: 'Furniture / Pottery / Cutlery / Towel Stacks', source: 'Original Procedural Extrusion & Lathe Builders' },
+    { id: 'interior-furnishings', rooms: 12, source: 'Original Measured Furniture, Espresso Bar & Appliance Builders' },
+    { id: 'room-props-lathe-chamfered', categories: 'Furniture / Pottery / Cutlery / Espresso & Towel Stacks', source: 'Original Procedural Extrusion & Lathe Builders' },
   ],
   audio: [
     { id: 'garden-breeze-birds', source: 'Web Audio API Procedural Synthesis' },

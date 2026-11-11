@@ -180,7 +180,7 @@ export class PlayerController {
       return 'timber';
     }
     if (x >= -12 && x <= 12 && z >= -9 && z <= 9) {
-      if (x >= -11.9 && x <= -7.15 && z >= 4.45 && z <= 8.9) return 'tile'; // kitchen limestone
+      if (x >= -11.9 && x <= -7.05 && z >= 4.45 && z <= 8.9) return 'tile'; // kitchen limestone
       if (x >= 9.25 && x <= 11.9 && z >= 1.85 && z <= 4.7) return 'tile'; // bath 1
       if (x >= 3.4 && x <= 7.3 && z >= -8.9 && z <= -6.2) return 'tile'; // laundry
       if (x >= 2.2 && x <= 4.8 && z >= 5.95 && z <= 8.85) return 'stone'; // foyer

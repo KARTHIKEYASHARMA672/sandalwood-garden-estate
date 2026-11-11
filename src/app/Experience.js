@@ -261,6 +261,10 @@ export class Experience {
 
     activeRig.root.visible = true;
     activeRig.root.position.copy(this.playerController.position);
+    if (isSeated) {
+      // Seat Y stores cushion top elevation; align character pelvis surface flush with cushion
+      activeRig.root.position.y -= isMale ? 0.44 : 0.41;
+    }
 
     // Character faces movement direction or camera yaw
     const yaw = this.cameraController.yaw;

@@ -1,7 +1,7 @@
 # 🏡 Sandalwood Garden Estate
 
 > **Interactive 3D First- & Third-Person Architectural Exploration**  
-> Built strictly in **Pure ES2024 JavaScript (zero `.ts` / `.tsx` / `.jsx`)** with **Three.js `0.175.0`**, procedural PBR textures, dynamic Web Audio synthesis, and an automated 5-tier Vitest suite (`338 / 338` passing).
+> Built strictly in **Pure ES2024 JavaScript (zero `.ts` / `.tsx` / `.jsx`)** with **Three.js `^0.175.0`**, procedural PBR textures, dynamic Web Audio synthesis, and an automated 5-tier Vitest suite (`349 / 349` passing).
 
 ---
 
@@ -16,7 +16,7 @@
 | **Language Policy** | **100% Pure JavaScript (`.js`) + HTML/CSS** | Zero TypeScript/JSX files across `src/` and `tests/` |
 | **3D Engine** | `three` `^0.175.0` | Procedural architectural mesh builder, IBL environment & shaders |
 | **Bundler / Dev Server** | Vite `^6.2.0` | Production bundle in `dist/` |
-| **Automated Tests** | Vitest `^3.0.8` (`338 / 338` passed, `9` files) | Tiers 1–5 + headless DOM/Web Audio harness |
+| **Automated Tests** | Vitest `^3.0.8` (`349 / 349` passed, `9` files) | Tiers 1–5 + headless DOM/Web Audio harness |
 | **Linter** | ESLint `^9.21.0` (`eslint src tests`) | `0` errors, `0` warnings |
 | **Authoritative Specs** | [`Sandalwood_Garden_Estate_Detailed_PRD.md`](./Sandalwood_Garden_Estate_Detailed_PRD.md) | 1 world unit = 1 metre architectural scale |
 
@@ -42,7 +42,7 @@
 - **Residence Massing (`24 x 18 m`, Two-Story + Single-Story East Wing)**:
   - Raised stone foundation plinth (`Y = 0.30 m`) with sandstone front porch (`6 x 3 m`) and structural timber columns.
   - **Mandatory Asymmetric Front Façade (`Z = +8.875 m`)**: Large double-hung picture window with shutters on the left (`X = -3.6 m`), timber-framed entrance porch and main door on the right (`X = +3.5 m`).
-  - Continuous punched `ExtrudeGeometry` walls with mitered aperture reveals, Venetian lime-plaster interior faces, espresso walnut L-corner-wrapped baseboards, double-height Living Hall atrium with walnut spandrel trim (`Y = 3.825 m`), eave wall-plate tie beam ring (`Y = 7.05 m`), enclosed gable ends, dual-sided `18`-step oak central staircase + East gallery guardrail (`Y = 0.30 -> 3.95 m`), and contoured `1.78 m` / `1.66 m` companion avatars.
+  - Continuous punched `ExtrudeGeometry` walls with mitered aperture reveals, Venetian lime-plaster interior faces, espresso walnut L-corner-wrapped baseboards, double-height Living Hall atrium with walnut spandrel trim (`Y = 3.825 m`), eave wall-plate tie beam ring (`Y = 7.05 m`), vaulted roof-soffit brass-rod pendants, enclosed gable ends, dual-sided `18`-step oak central staircase + East gallery guardrail (`Y = 0.30 -> 3.95 m`), and contoured `1.78 m` / `1.66 m` companion avatars.
 - **Exact Fenestration & Doors**:
   - **`12` Windows** (`6` ground + `6` upper, including shutters, linen curtains, and frosted bath glazing).
   - **`13` Interactive Doors** (`1` main entrance, `1` service rear door, `1` pool terrace double sliding glass door, `8` interior hinged doors, `2` cantilevered balcony glass doors) with animated pivot/slide groups, brass handles, dynamic `CollisionSystem` toggling, and synthesized creak/latch audio.
@@ -58,13 +58,13 @@
 | :-: | :--- | :--- | :--- | :--- |
 | 1 | `flower-garden` | Flower Garden | Exterior | Arrival path, companion avatars, `12` flower beds (`7` species), orchard trees |
 | 2 | `front-porch` | Front Porch | Ground (`0.30 m`) | Sandstone entry steps, timber columns, bronze sconces, porch bench |
-| 3 | `living-hall` | Living Hall | Ground & Mezzanine | Double-height atrium, OLED TV (`[E]` toggle), sofa & accent seating, upper gallery overlook & NW Upper Rear Lounge |
-| 4 | `kitchen` | Kitchen | Ground (`0.30 m`) | Breakfast bar, granite counter, range hood, **`37` utensils + `41` cookware items (`37` core setting)** |
-| 5 | `dining-hall` | Dining & Family Hall | Ground (`0.30 m`) | 8-seat chamfered dining table, flush sideboard, east gallery hall console & conservatory alcove, sliding pool door (`[E]`) |
-| 6 | `bedroom-1` | Bedroom 1 | Ground (`0.30 m`) | Primary suite, timber bed, bedside lamps (`[L]`), wardrobe & garden east view |
-| 7 | `bathroom-1` | Bathroom 1 | Ground (`0.30 m`) | Stone tile, frosted window, vanity, interactive rain shower particle system (`[E]`) |
-| 8 | `bedroom-2` | Bedroom 2 | Upper (`3.95 m`) | Upper west suite, vaulted rafters, walk-in wardrobe (oak armoire & hanging garments), linen closet, balcony access |
-| 9 | `bathroom-2` | Bathroom 2 | Upper (`3.95 m`) | Ensuite bath with frosted west glazing, ceramic fixtures & shower emitter (`[E]`) |
+| 3 | `living-hall` | Living Hall | Ground & Mezzanine | Double-height atrium, vertical fluted sandalwood TV media wall, OLED TV (`[E]` toggle), recessed masonry hearth with wrought-iron grate, glowing embers & flames, sofa & accent seating, proud arched foyer mirror + sculpted umbrella stand, upper gallery overlook & NW Upper Rear Lounge |
+| 4 | `kitchen` | Kitchen | Ground (`0.30 m`) | Flush extended limestone floor slab, breakfast island, stone counter, range hood, **`37` utensils + `41` cookware items (`37` core setting)** |
+| 5 | `dining-hall` | Dining & Family Hall | Ground (`0.30 m`) | Dedicated dining rug, 6-seat chamfered dining table, flush sideboard, interactive **Artisan Espresso Bar (`[E]`) & Café Bistro Nook** anchored by NW Gallery botanical art & olive planter, Sunroom Conservatory, East Gallery Parlour & Alcove, sliding pool door (`[E]`) |
+| 6 | `bedroom-1` | Bedroom 1 | Ground (`0.30 m`) | Primary suite, timber bed, bedside lamps & warm wall sconces (`[L]` / `Day/Sunset/Night`), wardrobe & garden east view |
+| 7 | `bathroom-1` | Bathroom 1 | Ground (`0.30 m`) | Stone tile, frosted window, vanity with backlit oval halo mirror, interactive rain shower particle system (`[E]`) |
+| 8 | `bedroom-2` | Bedroom 2 | Upper (`3.95 m`) | Upper west suite, vaulted rafters, walk-in wardrobe (oak armoire & hanging garments), bedside sconces, linen closet, balcony access |
+| 9 | `bathroom-2` | Bathroom 2 | Upper (`3.95 m`) | Ensuite bath with frosted west glazing, backlit vanity halo mirror, ceramic fixtures & shower emitter (`[E]`, `Y = 6.15 m`) |
 | 10 | `laundry-room` | Laundry Room | Ground (`0.30 m`) | Utility room (`[E]` interactive washer & dryer), adjacent storage closet & service door |
 | 11 | `pool-terrace` | Pool Terrace | Exterior (`0.25 m`) | `12 x 8 m` poolside deck, `8 x 4 m` pool with perimeter push-out safety colliders |
 | 12 | `balcony` | Upper Balconies | Upper (`3.95 m`) | Main rear teak balcony (`5.0 x 1.6 m`) & west suite balcony (`1.4 x 3.0 m`) |
@@ -153,7 +153,7 @@ npm run dev
 # 3. Run ESLint across src/ and tests/
 npm run lint
 
-# 4. Execute all 9 Vitest suites (Tiers 1–5, 338 tests)
+# 4. Execute all 9 Vitest suites (Tiers 1–5, 349 tests)
 npm test
 
 # 5. Build optimized production bundle (outputs dist/)
@@ -164,7 +164,7 @@ npm run preview
 ```
 
 > [!NOTE]
-> [`TEST_INFRA.md`](./TEST_INFRA.md) and [`TEST_READY.md`](./TEST_READY.md) preserve the original Tiers 1–4 harness milestone report (`7` files, `257` tests). The active test suite now also includes **Tier 5 adversarial suites** (`tests/tier5/adversarial_physics.test.js` and `tests/tier5/adversarial_interaction_state.test.js`) plus structural, material, and occupancy regression suites, bringing total coverage to **`9` test files and `338` passing tests**.
+> [`TEST_INFRA.md`](./TEST_INFRA.md) and [`TEST_READY.md`](./TEST_READY.md) preserve the original Tiers 1–4 harness milestone report (`7` files, `257` tests). The active test suite now also includes **Tier 5 adversarial suites** (`tests/tier5/adversarial_physics.test.js` and `tests/tier5/adversarial_interaction_state.test.js`) plus structural, material, Day/Night fixture scaling, and occupancy regression suites, bringing total coverage to **`9` test files and `349` passing tests**.
 
 ---
 
@@ -172,7 +172,7 @@ npm run preview
 
 - [x] **Pure JavaScript Audit**: `0` `.ts`, `.tsx`, `.jsx`, or `.d.ts` files in `src/` or `tests/`.
 - [x] **ESLint Check**: `npm run lint` passed (`0` errors, `0` warnings).
-- [x] **Vitest Suite**: `npm test` passed (`9 / 9` files, **`338 / 338` tests**).
+- [x] **Vitest Suite**: `npm test` passed (`9 / 9` files, **`349 / 349` tests**).
 - [x] **Production Bundle**: `npm run build` outputs clean chunks in `dist/` (`vite build`).
-- [x] **Headless WebGL Browser Verification**: Verified in Chromium via Playwright across `24` viewpoints (`slice2` exterior/day/sunset/night/pool + `slice3` every interior zone including Kitchen, Dining, Living Hall, Master & Guest Bedrooms, Baths with live `[E]` shower spray, Laundry, Dual-Sided Staircase, Upper Gallery, NW Upper Rear Lounge, East Gallery Hall & Conservatory Alcove, Walk-in Wardrobe, and Contoured Companion Characters) with `0` console errors, `0` console warnings, and `0` page errors.
+- [x] **Headless WebGL Browser Verification**: Verified in Chromium via Playwright across Day & Night modes, Foyer alcove mirror & sculpted umbrella stand, Living Hall fluted media wall & recessed flickering hearth, Kitchen limestone slab, Dining pier artworks, interactive `[E]` Artisan Espresso Bar & NW Gallery botanical alcove, Sunroom Conservatory, East Gallery Parlour, Master & Guest Bedrooms with Day/Night-scaled bedside sconces, Bathrooms with backlit halo mirrors, Upper Mezzanine Study & Lounge, and Contoured Standing/Seated Companion Characters (`v5`–`v9` screenshot passes, `0` console/page errors).
 - [x] **Netlify Config (`netlify.toml`)**: Builds `dist/` via `npm run build`, sets SPA fallback `/* -> /index.html (200)`, and applies immutable `/assets/*` caching headers.

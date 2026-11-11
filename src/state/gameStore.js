@@ -87,6 +87,7 @@ const initialState = () => ({
   appliances: {
     washerRunning: false,
     dryerRunning: false,
+    espressoBrewing: false,
   },
   activeOverlay: null, // null | 'characters' | 'controls' | 'settings'
   resetNonce: 0,

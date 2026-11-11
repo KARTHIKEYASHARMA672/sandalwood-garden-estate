@@ -53,6 +53,7 @@ export class InteractionManager {
       return;
     }
 
+    this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this._ndc, this.camera);
     this.raycaster.near = 0.08;
     this.raycaster.far = 3.5;
