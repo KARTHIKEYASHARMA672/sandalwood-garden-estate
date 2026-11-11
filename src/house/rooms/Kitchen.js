@@ -1,12 +1,17 @@
 import * as THREE from 'three';
 import {
-  getTimberTextures,
-  getStoneTileTextures,
+  getFurnitureWoodTextures,
+  getStoneSlabTextures,
+  getPlasterTextures,
+  getFabricTextures,
 } from '../../assets/procedural/TextureGenerator.js';
 import {
   createChamferedBoxGeo,
   createLatheGeo,
   createGooseneckFaucet,
+  createFlutedPanel,
+  createContactAoMesh,
+  createCurvedChairBackGeo,
 } from './RoomProps.js';
 
 /**
@@ -67,25 +72,30 @@ export class KitchenBuilder {
   }
 
   createMaterials() {
-    const walnut = getTimberTextures('walnut', 2, 2);
-    const sandalwood = getTimberTextures('sandalwood', 2, 2);
-    const limestone = getStoneTileTextures('limestone', 3, 2);
-    const backsplashStone = getStoneTileTextures('bathFloor', 4, 2);
+    const walnut = getFurnitureWoodTextures('walnut', 2, 2);
+    const sandalwood = getFurnitureWoodTextures('sandalwood', 2, 2);
+    const calacattaTop = getStoneSlabTextures('calacatta', 1, 1);
+    const calacattaSplash = getStoneSlabTextures('calacatta', 2, 1);
+    const plasterHoodTex = getPlasterTextures('#EAE1D2', 1, 1);
+    const boucle = getFabricTextures('#EDE5D8', 2, 2);
 
     return {
       lowerCabinet: new THREE.MeshStandardMaterial({
         color: 0x80583b,
         map: walnut.map,
         normalMap: walnut.normalMap,
-        normalScale: new THREE.Vector2(0.7, 0.7),
-        roughness: 0.6,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: walnut.roughnessMap,
+        roughness: 0.54,
         metalness: 0.05,
       }),
       cabinetDoorTrim: new THREE.MeshStandardMaterial({
         color: 0x6f4a30,
         map: walnut.map,
         normalMap: walnut.normalMap,
-        roughness: 0.56,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: walnut.roughnessMap,
+        roughness: 0.52,
         metalness: 0.05,
       }),
       upperCabinet: new THREE.MeshStandardMaterial({
@@ -94,19 +104,39 @@ export class KitchenBuilder {
         metalness: 0.02,
       }),
       worktop: new THREE.MeshStandardMaterial({
-        color: 0xe3dacb,
-        map: limestone.map,
-        normalMap: limestone.normalMap,
-        normalScale: new THREE.Vector2(0.5, 0.5),
-        roughness: 0.34,
+        color: 0xf6f2ec,
+        map: calacattaTop.map,
+        normalMap: calacattaTop.normalMap,
+        normalScale: new THREE.Vector2(0.42, 0.42),
+        roughnessMap: calacattaTop.roughnessMap,
+        roughness: 0.3,
         metalness: 0.04,
       }),
       backsplash: new THREE.MeshStandardMaterial({
-        color: 0xe6dfd3,
-        map: backsplashStone.map,
-        normalMap: backsplashStone.normalMap,
-        roughness: 0.45,
+        color: 0xf4efe8,
+        map: calacattaSplash.map,
+        normalMap: calacattaSplash.normalMap,
+        normalScale: new THREE.Vector2(0.4, 0.4),
+        roughnessMap: calacattaSplash.roughnessMap,
+        roughness: 0.32,
         metalness: 0.03,
+      }),
+      plasterHood: new THREE.MeshStandardMaterial({
+        color: 0xede4d6,
+        map: plasterHoodTex.map,
+        normalMap: plasterHoodTex.normalMap,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughnessMap: plasterHoodTex.roughnessMap,
+        roughness: 0.86,
+      }),
+      stoolBoucle: new THREE.MeshStandardMaterial({
+        map: boucle.map,
+        normalMap: boucle.normalMap,
+        normalScale: new THREE.Vector2(0.48, 0.48),
+        roughnessMap: boucle.roughnessMap,
+        roughness: 0.9,
+        metalness: 0.0,
+        envMapIntensity: 0.2,
       }),
       stainless: new THREE.MeshStandardMaterial({
         color: 0xdcdddf,
@@ -161,7 +191,9 @@ export class KitchenBuilder {
       woodBeech: new THREE.MeshStandardMaterial({
         map: sandalwood.map,
         normalMap: sandalwood.normalMap,
-        roughness: 0.65,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughnessMap: sandalwood.roughnessMap,
+        roughness: 0.58,
       }),
       castIron: new THREE.MeshStandardMaterial({
         color: 0x202124,
@@ -238,7 +270,7 @@ export class KitchenBuilder {
     westBase.receiveShadow = true;
     cabGroup.add(westBase);
 
-    // Shaker cabinet fronts aligned around the stainless oven bay (cookZ = 5.35, width = 0.60)
+    // Fluted walnut cabinet fronts & stainless dishwasher panel aligned around oven bay (cookZ = 5.35)
     const lowerBays = [
       { z: 4.89, w: 0.26, isDishwasher: false },
       { z: 6.00, w: 0.58, isDishwasher: false },
@@ -247,13 +279,27 @@ export class KitchenBuilder {
     ];
     for (const bay of lowerBays) {
       const { z: dz, w: dw, isDishwasher } = bay;
-      const panel = new THREE.Mesh(
-        createChamferedBoxGeo(0.022, 0.72, dw, 0.006),
-        isDishwasher ? this.materials.stainless : this.materials.cabinetDoorTrim
-      );
-      panel.position.set(westX + counterD * 0.5 + 0.008, kickH + 0.38, dz);
-      panel.castShadow = true;
-      cabGroup.add(panel);
+      if (isDishwasher) {
+        const panel = new THREE.Mesh(
+          createChamferedBoxGeo(0.022, 0.72, dw, 0.006),
+          this.materials.stainless
+        );
+        panel.position.set(westX + counterD * 0.5 + 0.008, kickH + 0.38, dz);
+        panel.castShadow = true;
+        cabGroup.add(panel);
+      } else {
+        const panel = createFlutedPanel(
+          dw - 0.01,
+          0.72,
+          0.022,
+          Math.max(4, Math.round(dw * 18)),
+          this.materials.lowerCabinet,
+          this.materials.cabinetDoorTrim
+        );
+        panel.rotation.y = Math.PI / 2;
+        panel.position.set(westX + counterD * 0.5 + 0.008, kickH + 0.38, dz);
+        cabGroup.add(panel);
+      }
 
       const handle = new THREE.Mesh(
         new THREE.CylinderGeometry(0.007, 0.007, isDishwasher ? 0.34 : 0.16, 8),
@@ -303,6 +349,29 @@ export class KitchenBuilder {
     northBase.castShadow = true;
     northBase.receiveShadow = true;
     cabGroup.add(northBase);
+
+    for (let u = 0; u < 4; u++) {
+      const bayW = nW / 4 - 0.016;
+      const bx = nX - nW * 0.5 + (u + 0.5) * (nW / 4);
+      const nFluteDoor = createFlutedPanel(
+        bayW,
+        0.72,
+        0.02,
+        12,
+        this.materials.lowerCabinet,
+        this.materials.cabinetDoorTrim
+      );
+      nFluteDoor.rotation.y = Math.PI;
+      nFluteDoor.position.set(bx, kickH + 0.38, nZ - nD * 0.5 - 0.006);
+      cabGroup.add(nFluteDoor);
+
+      const nPull = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.006, 0.006, 0.14, 8),
+        this.materials.brushedBrass
+      );
+      nPull.position.set(bx + (u % 2 === 0 ? bayW * 0.34 : -bayW * 0.34), kickH + 0.58, nZ - nD * 0.5 - 0.022);
+      cabGroup.add(nPull);
+    }
 
     const northTop = new THREE.Mesh(
       createChamferedBoxGeo(nW + 0.02, topThick, nD + 0.02, 0.012),
@@ -418,7 +487,7 @@ export class KitchenBuilder {
     const ix = -8.95;
     const iz = 6.25;
 
-    // Island base cabinetry + waterfall leg sides
+    // Island base cabinetry + 3D fluted walnut faces + waterfall leg sides
     const islandBase = new THREE.Mesh(
       new THREE.BoxGeometry(islandW - 0.24, islandH - topThick, islandL - 0.12),
       this.materials.lowerCabinet
@@ -428,7 +497,32 @@ export class KitchenBuilder {
     islandBase.receiveShadow = true;
     islandGroup.add(islandBase);
 
-    // Chamfered limestone breakfast bar waterfall countertop
+    const islandFlutesEast = createFlutedPanel(
+      islandL - 0.14,
+      islandH - topThick - 0.08,
+      0.02,
+      36,
+      this.materials.lowerCabinet,
+      this.materials.cabinetDoorTrim
+    );
+    islandFlutesEast.rotation.y = Math.PI / 2;
+    islandFlutesEast.position.set(-0.12 + (islandW - 0.24) * 0.5 + 0.005, (islandH - topThick) * 0.5, 0);
+    islandGroup.add(islandFlutesEast);
+
+    const islandFlutesWest = createFlutedPanel(
+      islandL - 0.14,
+      islandH - topThick - 0.08,
+      0.02,
+      36,
+      this.materials.lowerCabinet,
+      this.materials.cabinetDoorTrim
+    );
+    islandFlutesWest.rotation.y = -Math.PI / 2;
+    islandFlutesWest.position.set(-0.12 - (islandW - 0.24) * 0.5 - 0.005, (islandH - topThick) * 0.5, 0);
+    islandGroup.add(islandFlutesWest);
+    islandGroup.add(createContactAoMesh(islandW + 0.24, islandL + 0.24, 0.28));
+
+    // Chamfered Calacatta marble breakfast bar waterfall countertop
     const islandTop = new THREE.Mesh(
       createChamferedBoxGeo(islandW, topThick, islandL, 0.015),
       this.materials.worktop
@@ -448,7 +542,7 @@ export class KitchenBuilder {
       islandGroup.add(waterfallSide);
     }
 
-    // 3 Contoured Saddle Breakfast Barstools (seat height = 0.65m per PRD test spec)
+    // 3 Sculpted Walnut & Cream Boucle Horseshoe Breakfast Barstools (seat height = 0.65m)
     const stoolSeatH = 0.65;
     const stoolZOffsets = [-0.62, 0.0, 0.62];
 
@@ -456,44 +550,63 @@ export class KitchenBuilder {
       const stoolGroup = new THREE.Group();
       stoolGroup.name = `kitchen-barstool-${s + 1}`;
 
-      // Sculpted ergonomic walnut saddle seat (top surface at Y = 0.65m)
-      const seatMesh = new THREE.Mesh(
-        createChamferedBoxGeo(0.34, 0.055, 0.42, 0.045),
+      // Sculpted walnut seat apron & plump cream boucle circular cushion (top surface at Y = 0.65m)
+      const seatApron = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.185, 0.175, 0.036, 22),
         this.materials.lowerCabinet
       );
-      seatMesh.position.set(0, stoolSeatH - 0.028, 0);
+      seatApron.position.set(0, stoolSeatH - 0.056, 0);
+      seatApron.castShadow = true;
+      stoolGroup.add(seatApron);
+
+      const seatMesh = new THREE.Mesh(
+        createChamferedBoxGeo(0.36, 0.044, 0.38, 0.12),
+        this.materials.stoolBoucle
+      );
+      seatMesh.position.set(0, stoolSeatH - 0.022, 0);
       seatMesh.castShadow = true;
       seatMesh.receiveShadow = true;
       stoolGroup.add(seatMesh);
 
-      // Low contoured backrest rail
-      const backMesh = new THREE.Mesh(
-        createChamferedBoxGeo(0.045, 0.14, 0.36, 0.015),
-        this.materials.lowerCabinet
-      );
-      backMesh.position.set(0.15, stoolSeatH + 0.09, 0);
+      // Curved sculpted walnut horseshoe backrest (arcs behind +X, opens West -X toward island)
+      const horseshoeGeo = createCurvedChairBackGeo(0.205, 0.088, 0.044, Math.PI * 0.96);
+      horseshoeGeo.rotateY(-Math.PI / 2);
+      const backMesh = new THREE.Mesh(horseshoeGeo, this.materials.lowerCabinet);
+      backMesh.position.set(0.015, stoolSeatH + 0.125, 0);
       backMesh.castShadow = true;
       stoolGroup.add(backMesh);
 
-      // Brass footrest ring & 4 splayed tapered legs
+      for (const sz of [-0.175, 0.175]) {
+        const stile = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.018, 0.15, 8),
+          this.materials.lowerCabinet
+        );
+        stile.position.set(0.055, stoolSeatH + 0.06, sz);
+        stile.rotation.z = -0.14;
+        stile.castShadow = true;
+        stoolGroup.add(stile);
+      }
+
+      // Brushed brass footrest ring & 4 splayed tapered walnut legs
       const ringMesh = new THREE.Mesh(
-        new THREE.TorusGeometry(0.145, 0.011, 8, 20),
+        new THREE.TorusGeometry(0.155, 0.009, 8, 22),
         this.materials.brushedBrass
       );
       ringMesh.rotateX(Math.PI / 2);
       ringMesh.position.set(0, 0.22, 0);
       stoolGroup.add(ringMesh);
 
-      const stoolLegGeo = new THREE.CylinderGeometry(0.015, 0.01, stoolSeatH - 0.04, 10);
+      const stoolLegGeo = new THREE.CylinderGeometry(0.016, 0.011, stoolSeatH - 0.045, 10);
       for (let l = 0; l < 4; l++) {
         const ang = (l / 4) * Math.PI * 2 + Math.PI / 4;
-        const leg = new THREE.Mesh(stoolLegGeo, this.materials.brushedBrass);
-        leg.position.set(Math.cos(ang) * 0.125, (stoolSeatH - 0.04) * 0.5, Math.sin(ang) * 0.145);
-        leg.rotation.x = -Math.sin(ang) * 0.08;
-        leg.rotation.z = Math.cos(ang) * 0.08;
+        const leg = new THREE.Mesh(stoolLegGeo, this.materials.lowerCabinet);
+        leg.position.set(Math.cos(ang) * 0.132, (stoolSeatH - 0.045) * 0.5, Math.sin(ang) * 0.142);
+        leg.rotation.x = -Math.sin(ang) * 0.085;
+        leg.rotation.z = Math.cos(ang) * 0.085;
         leg.castShadow = true;
         stoolGroup.add(leg);
       }
+      stoolGroup.add(createContactAoMesh(0.46, 0.46, 0.2));
 
       const stoolX = islandW * 0.5 + 0.3;
       const stoolZ = stoolZOffsets[s];
@@ -506,7 +619,7 @@ export class KitchenBuilder {
         x: ix + stoolX,
         y: floorY + stoolSeatH,
         z: iz + stoolZ,
-        heading: -Math.PI / 2,
+        heading: Math.PI / 2,
       });
     }
 
@@ -632,20 +745,37 @@ export class KitchenBuilder {
     ovenHandle.position.set(westX + 0.35, 0.64, cookZ);
     appGroup.add(ovenHandle);
 
-    // 3. Sculpted Canopy Extractor Range Hood above cooktop (south of window)
+    // 3. Sculpted Lime-Plaster Canopy Range Hood & Chimney Flue above cooktop (south of win-kitchen-west)
     const hoodCanopy = new THREE.Mesh(
-      createChamferedBoxGeo(0.56, 0.1, 0.82, 0.012),
-      this.materials.stainless
+      createChamferedBoxGeo(0.56, 0.42, 0.84, 0.016),
+      this.materials.plasterHood
     );
-    hoodCanopy.position.set(westX, 1.72, cookZ);
+    hoodCanopy.position.set(westX, 1.9, cookZ);
     hoodCanopy.castShadow = true;
+    hoodCanopy.receiveShadow = true;
     appGroup.add(hoodCanopy);
 
-    const flue = new THREE.Mesh(
-      new THREE.BoxGeometry(0.28, 1.38, 0.34),
-      this.materials.stainless
+    const hoodBaffle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.48, 0.018, 0.76),
+      this.materials.darkSteel
     );
-    flue.position.set(westX, 2.46, cookZ);
+    hoodBaffle.position.set(westX, 1.688, cookZ);
+    appGroup.add(hoodBaffle);
+
+    const hoodLed = new THREE.Mesh(
+      new THREE.BoxGeometry(0.03, 0.01, 0.68),
+      new THREE.MeshBasicMaterial({ color: 0xffe8c8 })
+    );
+    hoodLed.position.set(westX - 0.16, 1.682, cookZ);
+    appGroup.add(hoodLed);
+
+    const flue = new THREE.Mesh(
+      createChamferedBoxGeo(0.4, 1.28, 0.56, 0.014),
+      this.materials.plasterHood
+    );
+    flue.position.set(westX - 0.06, 2.74, cookZ);
+    flue.castShadow = true;
+    flue.receiveShadow = true;
     appGroup.add(flue);
 
     // 4. Built-in Stainless Microwave Oven on North Hutch Counter (X=-7.78, Z=8.46)
@@ -662,14 +792,26 @@ export class KitchenBuilder {
     );
     mwBezel.position.set(-7.78, counterH + 0.16, 8.268);
     appGroup.add(mwBezel);
-    const mwDoor = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, 0.014), this.materials.ovenGlass);
-    mwDoor.position.set(-7.84, counterH + 0.16, 8.26);
+    const mwDoor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.22, 0.014), this.materials.ovenGlass);
+    mwDoor.position.set(-7.845, counterH + 0.16, 8.26);
     appGroup.add(mwDoor);
+    const mwKeypad = new THREE.Mesh(
+      new THREE.BoxGeometry(0.11, 0.21, 0.008),
+      this.materials.cooktopBlack
+    );
+    mwKeypad.position.set(-7.61, counterH + 0.16, 8.26);
+    appGroup.add(mwKeypad);
+    const mwClock = new THREE.Mesh(
+      new THREE.BoxGeometry(0.072, 0.026, 0.004),
+      new THREE.MeshBasicMaterial({ color: 0xffd28a })
+    );
+    mwClock.position.set(-7.61, counterH + 0.225, 8.254);
+    appGroup.add(mwClock);
     const mwHandle = new THREE.Mesh(
       new THREE.CylinderGeometry(0.007, 0.007, 0.2, 8),
       this.materials.stainless
     );
-    mwHandle.position.set(-7.68, counterH + 0.16, 8.25);
+    mwHandle.position.set(-7.685, counterH + 0.16, 8.248);
     appGroup.add(mwHandle);
 
     // 5. French-Door Stainless Refrigerator / Freezer at NW corner (Z = 8.22)
@@ -1047,19 +1189,29 @@ export class KitchenBuilder {
     cwGroup.add(pressureCooker);
     this.cookwareMeshes.push(pressureCooker);
 
-    // 7. 1 Matte-Black Gooseneck Kettle on North counter
+    // 7. 1 Matte-Black Gooseneck Kettle with Brushed-Brass Lid Finial on North counter
     const kettle = new THREE.Group();
     const kBody = new THREE.Mesh(
       createLatheGeo([[0.08, 0], [0.095, 0.02], [0.068, 0.14], [0.052, 0.16], [0.018, 0.18]], 16),
       this.materials.cooktopBlack
     );
+    const kLidRim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.051, 0.053, 0.012, 16),
+      this.materials.brushedBrass
+    );
+    kLidRim.position.y = 0.162;
+    const kFinial = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.014, 0.012, 0.02, 12),
+      this.materials.brushedBrass
+    );
+    kFinial.position.y = 0.184;
     const kSpout = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.014, 0.13, 10), this.materials.cooktopBlack);
     kSpout.position.set(0.085, 0.085, 0);
     kSpout.rotation.z = -0.68;
     const kHandle = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.009, 6, 14, Math.PI * 1.15), this.materials.woodBeech);
     kHandle.position.set(-0.075, 0.09, 0);
     kHandle.rotation.z = Math.PI * 0.45;
-    kettle.add(kBody, kSpout, kHandle);
+    kettle.add(kBody, kLidRim, kFinial, kSpout, kHandle);
     kettle.position.set(-8.62, counterH, 8.44);
     kettle.userData = { type: 'cookware', name: 'Kettle' };
     cwGroup.add(kettle);
@@ -1101,13 +1253,14 @@ export class KitchenBuilder {
     const glassGeo = createLatheGeo([[0.028, 0], [0.032, 0.05], [0.035, 0.1], [0.032, 0.1], [0.026, 0.008]], 14);
     for (let i = 0; i < 6; i++) {
       const glass = new THREE.Mesh(glassGeo, this.materials.glassClear);
-      glass.position.set(-8.65 + (i % 3) * 0.1, shelfY + Math.floor(i / 3) * 0.001, shelfZ - 0.04 + Math.floor(i / 3) * 0.09);
+      glass.position.set(-8.72 + (i % 3) * 0.09, shelfY + Math.floor(i / 3) * 0.001, shelfZ - 0.04 + Math.floor(i / 3) * 0.09);
       glass.userData = { type: 'cookware', name: 'Drinking Glass' };
       cwGroup.add(glass);
       this.cookwareMeshes.push(glass);
     }
 
-    // 12. 4 Ceramic Coffee Mugs with handles on island coffee corner
+    // 12. 4 Ceramic Mugs stored cleanly inside the illuminated East Crockery Hutch Shelf
+    // (Removes former coffee-mug cluster from the Kitchen–Dining south threshold)
     const mugBodyGeo = createLatheGeo([[0.036, 0], [0.038, 0.088], [0.034, 0.09], [0.032, 0.008]], 14);
     for (let i = 0; i < 4; i++) {
       const mug = new THREE.Group();
@@ -1116,12 +1269,49 @@ export class KitchenBuilder {
       ear.rotation.z = -Math.PI / 2;
       ear.position.set(0.036, 0.045, 0);
       mug.add(body, ear);
-      mug.position.set(-8.82 + (i % 2) * 0.11, counterH, 5.26 + Math.floor(i / 2) * 0.11);
+      mug.position.set(-8.32 + (i % 2) * 0.11, shelfY, shelfZ - 0.03 + Math.floor(i / 2) * 0.09);
       mug.castShadow = true;
       mug.userData = { type: 'cookware', name: 'Mug' };
       cwGroup.add(mug);
       this.cookwareMeshes.push(mug);
     }
+
+    // Sculpted Limestone Pedestal Fruit Bowl + Walnut Tasting Coaster at South Island Bay
+    const islandSouthGroup = new THREE.Group();
+    const fruitTray = new THREE.Mesh(
+      createChamferedBoxGeo(0.28, 0.018, 0.24, 0.012),
+      this.materials.woodBeech
+    );
+    fruitTray.position.y = 0.009;
+    fruitTray.castShadow = true;
+    const pedBowl = new THREE.Mesh(
+      createLatheGeo([
+        [0.055, 0.018],
+        [0.045, 0.042],
+        [0.026, 0.056],
+        [0.125, 0.086],
+        [0.132, 0.125],
+        [0.12, 0.126],
+        [0.02, 0.068],
+      ], 20),
+      this.materials.worktop
+    );
+    pedBowl.castShadow = true;
+    islandSouthGroup.add(fruitTray, pedBowl);
+
+    const fruitColors = [0xd67c32, 0xdba038, 0x769445, 0xc8543e];
+    for (let f = 0; f < 4; f++) {
+      const ang = (f / 4) * Math.PI * 2 + 0.35;
+      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.034, 12, 10),
+        new THREE.MeshStandardMaterial({ color: fruitColors[f], roughness: 0.48 })
+      );
+      orb.position.set(Math.cos(ang) * 0.042, 0.105 + (f % 2) * 0.01, Math.sin(ang) * 0.042);
+      orb.scale.set(1.0, 0.88, 1.0);
+      islandSouthGroup.add(orb);
+    }
+    islandSouthGroup.position.set(-8.95, counterH, 5.26);
+    cwGroup.add(islandSouthGroup);
 
     // 13. 2 Flared Ceramic Serving Bowls on Island center
     const sbGeo = createLatheGeo([[0.001, 0], [0.075, 0.005], [0.145, 0.075], [0.14, 0.08], [0.07, 0.012]], 18);
