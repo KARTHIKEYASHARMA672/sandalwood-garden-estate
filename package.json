@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "homepage": "https://sandalwood-garden-estate.netlify.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KARTHIKEYASHARMA672/sandalwood-garden-estate.git"
+  },
   "description": "Interactive first-person 3D architectural exploration of Sandalwood Garden Estate built with Three.js and pure JavaScript.",
   "scripts": {
     "dev": "vite",

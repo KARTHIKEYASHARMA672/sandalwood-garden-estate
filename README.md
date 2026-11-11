@@ -1,6 +1,7 @@
 # 🏡 Sandalwood Garden Estate
 
 > **Interactive 3D First- & Third-Person Architectural Exploration**  
+> 🌐 **Live Hosted Experience:** **[sandalwood-garden-estate.netlify.app](https://sandalwood-garden-estate.netlify.app)** · 📦 **Source:** **[KARTHIKEYASHARMA672/sandalwood-garden-estate](https://github.com/KARTHIKEYASHARMA672/sandalwood-garden-estate)**  
 > Built strictly in **Pure ES2024 JavaScript (zero `.ts` / `.tsx` / `.jsx`)** with **Three.js `^0.175.0`**, procedural PBR textures, dynamic Web Audio synthesis, and an automated 5-tier Vitest suite (`349 / 349` passing).
 
 ---
@@ -10,9 +11,9 @@
 | Property | Value | Details |
 | :--- | :--- | :--- |
 | **Project Name** | `sandalwood-garden-estate` | Version `1.0.0` (`package.json`) |
-| **Repository** | `https://github.com/KARTHIKEYASHARMA672/sandalwood-garden-estate` | Public · Branch `main` |
-| **Live Deployment** | `https://sandalwood-garden-estate.netlify.app` | Netlify (`netlify.toml`) |
-| **Netlify Dashboard** | `https://app.netlify.com/projects/sandalwood-garden-estate` | Team `praneethsharma672` |
+| **Live Hosted URL** | **[https://sandalwood-garden-estate.netlify.app](https://sandalwood-garden-estate.netlify.app)** | Production SPA on Netlify (`netlify.toml`) |
+| **Repository** | **[https://github.com/KARTHIKEYASHARMA672/sandalwood-garden-estate](https://github.com/KARTHIKEYASHARMA672/sandalwood-garden-estate)** | Public · Branch `main` |
+| **Netlify Dashboard** | **[app.netlify.com/projects/sandalwood-garden-estate](https://app.netlify.com/projects/sandalwood-garden-estate)** | Team `praneethsharma672` |
 | **Language Policy** | **100% Pure JavaScript (`.js`) + HTML/CSS** | Zero TypeScript/JSX files across `src/` and `tests/` |
 | **3D Engine** | `three` `^0.175.0` | Procedural architectural mesh builder, IBL environment & shaders |
 | **Bundler / Dev Server** | Vite `^6.2.0` | Production bundle in `dist/` |
@@ -60,7 +61,7 @@
 | 2 | `front-porch` | Front Porch | Ground (`0.30 m`) | Sandstone entry steps, timber columns, bronze sconces, porch bench |
 | 3 | `living-hall` | Living Hall | Ground & Mezzanine | Double-height atrium, vertical fluted sandalwood TV media wall, OLED TV (`[E]` toggle), recessed masonry hearth with wrought-iron grate, glowing embers & flames, sofa & accent seating, proud arched foyer mirror + sculpted umbrella stand, upper gallery overlook & NW Upper Rear Lounge |
 | 4 | `kitchen` | Kitchen | Ground (`0.30 m`) | Flush extended limestone floor slab, breakfast island, stone counter, range hood, **`37` utensils + `41` cookware items (`37` core setting)** |
-| 5 | `dining-hall` | Dining & Family Hall | Ground (`0.30 m`) | Dedicated dining rug, 6-seat chamfered dining table, flush sideboard, interactive **Artisan Espresso Bar (`[E]`) & Café Bistro Nook** anchored by NW Gallery botanical art & olive planter, Sunroom Conservatory, East Gallery Parlour & Alcove, sliding pool door (`[E]`) |
+| 5 | `dining-hall` | Dining & Family Hall | Ground (`0.30 m`) | Dedicated dining rug, 8-seat chamfered dining table & settings, brushed-brass halo chandelier, flush sideboard, paired pier art, interactive **Artisan Espresso Bar (`[E]`) & Café Bistro Nook** anchored by NW Gallery botanical art & olive planter, Sunroom Conservatory, East Gallery Parlour & Alcove, sliding pool door (`[E]`) |
 | 6 | `bedroom-1` | Bedroom 1 | Ground (`0.30 m`) | Primary suite, timber bed, bedside lamps & warm wall sconces (`[L]` / `Day/Sunset/Night`), wardrobe & garden east view |
 | 7 | `bathroom-1` | Bathroom 1 | Ground (`0.30 m`) | Stone tile, frosted window, vanity with backlit oval halo mirror, interactive rain shower particle system (`[E]`) |
 | 8 | `bedroom-2` | Bedroom 2 | Upper (`3.95 m`) | Upper west suite, vaulted rafters, walk-in wardrobe (oak armoire & hanging garments), bedside sconces, linen closet, balcony access |
@@ -174,5 +175,5 @@ npm run preview
 - [x] **ESLint Check**: `npm run lint` passed (`0` errors, `0` warnings).
 - [x] **Vitest Suite**: `npm test` passed (`9 / 9` files, **`349 / 349` tests**).
 - [x] **Production Bundle**: `npm run build` outputs clean chunks in `dist/` (`vite build`).
-- [x] **Headless WebGL Browser Verification**: Verified in Chromium via Playwright across Day & Night modes, Foyer alcove mirror & sculpted umbrella stand, Living Hall fluted media wall & recessed flickering hearth, Kitchen limestone slab, Dining pier artworks, interactive `[E]` Artisan Espresso Bar & NW Gallery botanical alcove, Sunroom Conservatory, East Gallery Parlour, Master & Guest Bedrooms with Day/Night-scaled bedside sconces, Bathrooms with backlit halo mirrors, Upper Mezzanine Study & Lounge, and Contoured Standing/Seated Companion Characters (`v5`–`v9` screenshot passes, `0` console/page errors).
-- [x] **Netlify Config (`netlify.toml`)**: Builds `dist/` via `npm run build`, sets SPA fallback `/* -> /index.html (200)`, and applies immutable `/assets/*` caching headers.
+- [x] **Headless WebGL Browser Verification**: Verified live on Netlify ([`sandalwood-garden-estate.netlify.app`](https://sandalwood-garden-estate.netlify.app)) and in local Chromium via Playwright across Day & Night modes, Foyer alcove mirror & tucked bouclé pouf, Living Hall fluted media wall, window banquette & recessed flickering hearth, Kitchen Calacatta island slabs & barstools, Dining pier artworks & halo chandelier, interactive `[E]` Artisan Espresso Bar & NW Gallery botanical alcove, Sunroom Conservatory, East Gallery Parlour, Master & Guest Bedrooms with olive tree & Day/Night-scaled bedside sconces, Bathrooms with frameless glass shower screens & backlit oval halo mirrors, Upper Mezzanine Study & Lounge, and Contoured Standing/Seated Companion Characters (`0` console/page errors).
+- [x] **Netlify Config (`netlify.toml`) & Live Hosting**: Builds `dist/` via `npm run build`, sets SPA fallback `/* -> /index.html (200)`, applies immutable `/assets/*` caching headers, and publishes live to **[https://sandalwood-garden-estate.netlify.app](https://sandalwood-garden-estate.netlify.app)**.
