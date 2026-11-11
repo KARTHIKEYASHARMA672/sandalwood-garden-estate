@@ -621,6 +621,67 @@ describe('Tier 1: Locomotion, Controls, Physics & Gameplay Systems', () => {
       expect(charRig.totalHeight).toBe(1.78);
       expect(() => charRig.update(0.016, 1.0, 3.8, false)).not.toThrow();
     });
+
+    it('deforms female wrap midi skirt forward over lap when seated while keeping waistband anchored and bumpMap absent', () => {
+      const femaleRig = createCharacterRig('female');
+      let hasBumpMap = false;
+      let skirtMesh = null;
+      femaleRig.root.traverse((obj) => {
+        if (obj.isMesh) {
+          if (obj.material?.bumpMap) hasBumpMap = true;
+          if (obj.material?.side === THREE.DoubleSide && obj.geometry?.type === 'CylinderGeometry') {
+            skirtMesh = obj;
+          }
+        }
+      });
+      expect(hasBumpMap).toBe(false);
+      expect(skirtMesh).not.toBeNull();
+
+      const posAttr = skirtMesh.geometry.getAttribute('position');
+      const getExtremes = () => {
+        let minY = Infinity;
+        let topRingMaxAbsY = 0;
+        let maxZ = -Infinity;
+        for (let i = 0; i < posAttr.count; i++) {
+          const y = posAttr.getY(i);
+          const z = posAttr.getZ(i);
+          if (y < minY) minY = y;
+          if (i < 29) topRingMaxAbsY = Math.max(topRingMaxAbsY, Math.abs(y));
+          if (z > maxZ) maxZ = z;
+        }
+        return { minY, topRingMaxAbsY, maxZ };
+      };
+
+      const standing = getExtremes();
+      expect(standing.topRingMaxAbsY).toBeCloseTo(0, 3);
+
+      // Blend cleanly to full seated pose
+      for (let i = 0; i < 40; i++) {
+        femaleRig.update(0.05, { time: i * 0.05, speed: 0, seated: true, hideHalo: true });
+      }
+      const seated = getExtremes();
+      expect(seated.topRingMaxAbsY).toBeCloseTo(0, 3); // Top waistband ring stays pinned
+      expect(seated.maxZ).toBeGreaterThan(standing.maxZ + 0.2); // Hem drapes forward over knees
+      expect(seated.minY).toBeGreaterThan(standing.minY + 0.15); // Bottom hem lifted clear of seat/floor
+    });
+
+    it('keeps third-person camera distance and seated eye elevation realistic without unnormalized ray scaling', () => {
+      gameStore.setState({ thirdPerson: true });
+      const seat = { id: 'dining-chair-south-1', label: 'Dining Chair', x: -7.5, y: 0.75, z: 2.0, heading: 0 };
+      rig.playerCtrl.sitAt(seat);
+      for (let i = 0; i < 30; i++) {
+        rig.cameraCtrl.update(rig.playerCtrl.position, true, 'female', 0.05);
+      }
+      // Seated eye target sits ~0.78m above cushion (~1.53m world); camera trails within ~2.7m at ~1.9m Y
+      expect(rig.cameraCtrl.camera.position.y).toBeGreaterThan(1.4);
+      expect(rig.cameraCtrl.camera.position.y).toBeLessThan(2.05);
+      const horizDist = Math.hypot(
+        rig.cameraCtrl.camera.position.x - seat.x,
+        rig.cameraCtrl.camera.position.z - seat.z
+      );
+      expect(horizDist).toBeGreaterThan(2.2);
+      expect(horizDist).toBeLessThan(2.8);
+    });
   });
 
   // F42: Comprehensive Automated Test Suite

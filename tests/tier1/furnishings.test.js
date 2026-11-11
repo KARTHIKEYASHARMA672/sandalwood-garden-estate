@@ -1,9 +1,24 @@
 import { describe, it, expect } from 'vitest';
+import * as THREE from 'three';
 import '../harness/mockEnv.js';
-import { ROOMS, DOORS } from '../../src/house/HouseArchitecture.js';
+import { ROOMS, DOORS, WINDOWS } from '../../src/house/HouseArchitecture.js';
 import { gameStore } from '../../src/state/gameStore.js';
-import { getFabricTextures, getTimberTextures } from '../../src/assets/procedural/TextureGenerator.js';
+import {
+  getFabricTextures,
+  getTimberTextures,
+  getVerticalSlatsTextures,
+  getFurnitureWoodTextures,
+  getRugTextures,
+  getStoneSlabTextures,
+  getHairTextures,
+} from '../../src/assets/procedural/TextureGenerator.js';
 import { CommonAreasBuilder, buildCommonAreas } from '../../src/house/rooms/CommonAreas.js';
+import { buildLivingHall } from '../../src/house/rooms/LivingHall.js';
+import { buildDiningHall } from '../../src/house/rooms/DiningHall.js';
+import { buildBedrooms } from '../../src/house/rooms/Bedrooms.js';
+import { buildBathrooms } from '../../src/house/rooms/Bathrooms.js';
+import { buildKitchen } from '../../src/house/rooms/Kitchen.js';
+import { buildAllRooms } from '../../src/house/FurnitureFactory.js';
 
 describe('Tier 1: Interior Furnishings & Domestic Inventories', () => {
   // F20: Main Living Hall
@@ -530,6 +545,145 @@ describe('Tier 1: Interior Furnishings & Domestic Inventories', () => {
       const frameMaxZ = frameMesh.geometry.boundingBox.max.z;
       expect(canvasMesh.position.z).toBeGreaterThan(frameMaxZ + 0.002);
       expect(canvasMesh.material.map).toBeDefined();
+    });
+
+    it('extends Kitchen limestone slab to East partition (-7.0) and North threshold (4.48)', () => {
+      const kitchen = ROOMS.find((r) => r.id === 'kitchen');
+      expect(kitchen.maxX).toBe(-7.0);
+      expect(kitchen.minZ).toBe(4.48);
+    });
+
+    it('keeps Dining sideboard and paired pier artworks clear of win-dining-west curtains', () => {
+      const diningWin = WINDOWS.find((w) => w.id === 'win-dining-west');
+      const winZMin = diningWin.z - diningWin.width * 0.5 - 0.35; // curtain rod & finial span
+      const winZMax = diningWin.z + diningWin.width * 0.5 + 0.35;
+
+      const dining = buildDiningHall();
+      const sideboard = dining.userData.colliders.find((c) => c.id === 'collider-dining-sideboard');
+      expect(sideboard).toBeDefined();
+      expect(sideboard.max.z).toBeLessThanOrEqual(winZMin + 0.05);
+
+      const artN = dining.getObjectByName('dining-wall-art');
+      const artS = dining.getObjectByName('dining-wall-art-south');
+      expect(artN).toBeDefined();
+      expect(artS).toBeDefined();
+      expect(artN.position.z).toBeGreaterThan(winZMax);
+      expect(artS.position.z).toBeLessThan(winZMin);
+    });
+
+    it('builds dedicated Espresso Bar, Sunroom Conservatory, aligned seat headings, and proud foyer mirror glass', () => {
+      const common = buildCommonAreas();
+      expect(common.getObjectByName('furniture-coffee-bar')).toBeDefined();
+      expect(common.getObjectByName('furniture-sunroom-conservatory')).toBeDefined();
+
+      const espresso = common.userData.interactables.find((i) => i.id === 'espresso-coffee-bar');
+      expect(espresso).toBeDefined();
+      expect(espresso.z).toBeLessThan(-2.0); // tucked in NW gallery bay clear of dining doors
+
+      // Bench faces West (-X => heading = +PI/2), gallery chair & armchair mesh rotation === heading
+      const benchSeat = common.userData.seats.find((s) => s.id === 'foyer-shoe-bench');
+      const gallerySeat = common.userData.seats.find((s) => s.id === 'gallery-reading-chair');
+      const loungeSeat = common.userData.seats.find((s) => s.id === 'upper-lounge-armchair');
+      const galleryMesh = common.getObjectByName('gallery-reading-armchair');
+      const loungeMesh = common.getObjectByName('upper-lounge-armchair');
+      expect(benchSeat.heading).toBeCloseTo(Math.PI / 2, 4);
+      expect(galleryMesh.rotation.y).toBeCloseTo(gallerySeat.heading, 4);
+      expect(loungeMesh.rotation.y).toBeCloseTo(loungeSeat.heading, 4);
+
+      // Arched foyer mirror panes sit cleanly proud of bevelled frame front
+      const mirror = common.getObjectByName('foyer-arch-mirror');
+      expect(mirror).toBeDefined();
+      const planes = mirror.children.filter((c) => c.isMesh && c.geometry.type !== 'BoxGeometry' && c.position.z > 0.015);
+      expect(planes.length).toBeGreaterThanOrEqual(2);
+      for (const pane of planes) {
+        expect(pane.position.z).toBeGreaterThan(0.019);
+      }
+    });
+
+    it('generates dedicated dining rug, organic furniture wood, and vertical slats textures cleanly', () => {
+      const diningRug = getRugTextures('dining');
+      const livingRug = getRugTextures('living');
+      expect(diningRug.map).toBeDefined();
+      expect(diningRug.map).not.toBe(livingRug.map);
+
+      const walnut = getFurnitureWoodTextures('walnut', 2, 2);
+      expect(walnut.isContinuousFurnitureWood).toBe(true);
+      expect(walnut.normalMap).toBeDefined();
+
+      const slats = getVerticalSlatsTextures(1, 1);
+      expect(slats.map.isCanvasTexture).toBe(true);
+      expect(slats.normalMap).toBeDefined();
+      expect(slats.bumpMap).toBeUndefined();
+    });
+
+    it('aggregates all room furnishings, interactables, and interior lights via FurnitureFactory', () => {
+      const living = buildLivingHall();
+      const bedrooms = buildBedrooms();
+      expect(living.getObjectByName('living-wall-art')).toBeDefined();
+      expect(bedrooms.getObjectByName('bedroom-1-wall-art')).toBeDefined();
+      expect(bedrooms.getObjectByName('bedroom-2-wall-art')).toBeDefined();
+      expect(bedrooms.getObjectByName('bedroom-2-study-art')).toBeDefined();
+
+      const house = new THREE.Group();
+      const bundle = buildAllRooms(house);
+      expect(bundle.rooms.size).toBe(7);
+      expect(bundle.interiorLights.length).toBeGreaterThanOrEqual(20);
+      for (const entry of bundle.interiorLights) {
+        expect(entry).toBeTypeOf('object');
+        expect(entry.light?.isLight).toBe(true);
+        expect(typeof entry.baseIntensity).toBe('number');
+      }
+      expect(house.userData.furnishings.totalUtensils).toBe(37);
+      expect(house.userData.furnishings.totalCookware).toBe(41);
+    });
+
+    it('generates procedural marble, travertine, limestone slab and anisotropic hair maps without bumpMap', () => {
+      for (const variant of ['calacatta', 'travertine', 'limestone']) {
+        const tex = getStoneSlabTextures(variant, 2, 2);
+        expect(tex.map.isCanvasTexture).toBe(true);
+        expect(tex.normalMap).toBeDefined();
+        expect(tex.roughnessMap).toBeDefined();
+        expect(tex.bumpMap).toBeUndefined();
+      }
+      const hair = getHairTextures('#1E1510', 2, 2);
+      expect(hair.map.isCanvasTexture).toBe(true);
+      expect(hair.normalMap).toBeDefined();
+      expect(hair.roughnessMap).toBeDefined();
+      expect(hair.bumpMap).toBeUndefined();
+    });
+
+    it('verifies reference interior upgrades across Foyer, Living, Kitchen, Bedrooms, and Ensuite Baths', () => {
+      const common = buildCommonAreas();
+      expect(common.getObjectByName('foyer-tucked-pouf')).toBeDefined();
+      expect(common.getObjectByName('coffee-bar-art')).toBeDefined();
+
+      const living = buildLivingHall();
+      expect(living.getObjectByName('living-window-bench')).toBeDefined();
+      const windowSeat = living.userData.seats.find((s) => s.id === 'living-window-bench');
+      expect(windowSeat?.heading).toBe(0);
+
+      const kitchen = buildKitchen();
+      for (let i = 1; i <= 3; i++) {
+        expect(kitchen.getObjectByName(`kitchen-barstool-${i}`)).toBeDefined();
+        const stoolSeat = kitchen.userData.seats.find((s) => s.id === `barstool-${i}`);
+        expect(stoolSeat?.heading).toBeCloseTo(Math.PI / 2, 4);
+      }
+
+      const bedrooms = buildBedrooms();
+      expect(bedrooms.getObjectByName('bedroom-1-olive-tree')).toBeDefined();
+      expect(bedrooms.getObjectByName('bedroom-1-reading-chair')).toBeDefined();
+      for (const entry of bedrooms.userData.interiorLights) {
+        expect(entry.light?.isLight).toBe(true);
+        expect(typeof entry.baseIntensity).toBe('number');
+      }
+
+      const baths = buildBathrooms();
+      expect(baths.userData.interiorLights.length).toBeGreaterThanOrEqual(2);
+      for (const entry of baths.userData.interiorLights) {
+        expect(entry.light?.isLight).toBe(true);
+        expect(entry.emissiveMat).toBeDefined();
+      }
+      expect(baths.userData.showers.bath2.headY).toBeCloseTo(6.13, 2);
     });
   });
 });
