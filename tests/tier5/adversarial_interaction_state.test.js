@@ -16,6 +16,9 @@ import {
 import { UtilityRoomBuilder } from '../../src/house/rooms/UtilityRoom.js';
 import { BathroomsBuilder } from '../../src/house/rooms/Bathrooms.js';
 import { CommonAreasBuilder } from '../../src/house/rooms/CommonAreas.js';
+import { LivingHallBuilder } from '../../src/house/rooms/LivingHall.js';
+import { DiningHallBuilder } from '../../src/house/rooms/DiningHall.js';
+import { BedroomsBuilder } from '../../src/house/rooms/Bedrooms.js';
 import { createTreesAndProps, TREE_SPECS } from '../../src/world/TreesAndProps.js';
 import { Experience } from '../../src/app/Experience.js';
 import { gameStore } from '../../src/state/gameStore.js';
@@ -632,6 +635,13 @@ describe('Tier 5: Adversarial Interaction, Audio, State & Particle Stress Testin
         expect(Number.isFinite(m.position.y)).toBe(true);
         expect(Number.isFinite(m.position.z)).toBe(true);
       }
+
+      // Verify all 4 mugs sit inside kitchen open shelf space (Z > 6.5) with zero items near dining doorway
+      const mugs = meshes.filter((m) => m.userData.name === 'Mug');
+      expect(mugs.length).toBe(4);
+      for (const mug of mugs) {
+        expect(mug.position.z).toBeGreaterThan(6.5);
+      }
     });
   });
 
@@ -710,6 +720,25 @@ describe('Tier 5: Adversarial Interaction, Audio, State & Particle Stress Testin
         expect(current.dryerRunning).toBe(expectedDryer);
       }
     });
+
+    it('keeps Espresso Bar brew state strictly isolated from washer and dryer states', () => {
+      const commonGroup = new CommonAreasBuilder().build();
+      const espresso = commonGroup.userData.interactables.find((i) => i.id === 'espresso-coffee-bar');
+      expect(espresso).toBeDefined();
+      expect(espresso.prompt()).toBe('E — Brew Artisan Espresso');
+
+      espresso.onInteract();
+      expect(gameStore.getState().appliances.espressoBrewing).toBe(true);
+      expect(gameStore.getState().appliances.washerRunning).toBe(false);
+      expect(gameStore.getState().appliances.dryerRunning).toBe(false);
+      expect(espresso.prompt()).toBe('E — Stop Espresso Brew');
+
+      gameStore.toggleAppliance('washerRunning');
+      expect(gameStore.getState().appliances.espressoBrewing).toBe(true);
+
+      espresso.onInteract();
+      expect(gameStore.getState().appliances.espressoBrewing).toBe(false);
+    });
   });
 
   // =========================================================================
@@ -742,12 +771,15 @@ describe('Tier 5: Adversarial Interaction, Audio, State & Particle Stress Testin
       }
     });
 
-    it('avoids combining bumpMap with normalMap in house shell, bath, kitchen, laundry, and common-area materials', () => {
+    it('avoids combining bumpMap with normalMap across house shell and all room builders', () => {
       const houseMats = new HouseMeshBuilder().materials;
       const bathMats = new BathroomsBuilder().materials;
       const kitchenMats = new KitchenBuilder().materials;
       const laundryMats = new UtilityRoomBuilder().materials;
       const commonMats = new CommonAreasBuilder().materials;
+      const livingMats = new LivingHallBuilder().materials;
+      const diningMats = new DiningHallBuilder().materials;
+      const bedroomMats = new BedroomsBuilder().materials;
 
       const sets = [
         houseMats,
@@ -756,12 +788,63 @@ describe('Tier 5: Adversarial Interaction, Audio, State & Particle Stress Testin
         kitchenMats,
         laundryMats,
         commonMats,
+        livingMats,
+        diningMats,
+        bedroomMats,
       ];
       for (const bag of sets) {
         for (const mat of Object.values(bag)) {
           if (mat && mat.isMaterial && mat.normalMap) {
             expect(mat.bumpMap ?? null).toBeNull();
           }
+        }
+      }
+    });
+
+    it('grounds every architectural ceiling fixture cleanly and keeps named wall artworks off door openings', () => {
+      const houseGroup = new THREE.Group();
+      const hm = new HouseMeshBuilder();
+      hm.buildInteriorLights(houseGroup);
+      const lightsGroup = houseGroup.getObjectByName('interior-architectural-lights');
+      expect(lightsGroup.children.length).toBe(8);
+
+      for (const fixture of lightsGroup.children) {
+        // Flat ceiling fixtures sit flush at Y = 3.68 under 3.70m slab; vaulted fixtures drop brass rod to soffit
+        const isFlatMounted = Math.abs(fixture.position.y - 3.68) < 0.02;
+        const hasSuspensionStem = fixture.children.some((c) => c.geometry?.parameters?.height > 0.25);
+        expect(isFlatMounted || hasSuspensionStem).toBe(true);
+      }
+
+      const common = new CommonAreasBuilder().build();
+      const living = new LivingHallBuilder().build();
+      const dining = new DiningHallBuilder().build();
+      const bedrooms = new BedroomsBuilder().build();
+
+      const namedArtGroups = [];
+      for (const root of [common, living, dining, bedrooms]) {
+        root.updateMatrixWorld(true);
+        root.traverse((obj) => {
+          if (obj.name && (obj.name.includes('-art') || obj.name.includes('diptych'))) {
+            namedArtGroups.push(obj);
+          }
+        });
+      }
+      expect(namedArtGroups.length).toBeGreaterThanOrEqual(17);
+
+      const worldPos = new THREE.Vector3();
+      for (const art of namedArtGroups) {
+        art.getWorldPosition(worldPos);
+        for (const door of DOORS) {
+          const sameHeightBand = worldPos.y < door.y + door.height * 0.5;
+          if (!sameHeightBand) continue;
+          const distX = Math.abs(worldPos.x - door.x);
+          const distZ = Math.abs(worldPos.z - door.z);
+          // Artwork cannot hang inside any hinged door leaf aperture
+          const insideAperture =
+            door.axis === 'z'
+              ? distZ < 0.25 && distX < door.width * 0.5 + 0.1
+              : distX < 0.25 && distZ < door.width * 0.5 + 0.1;
+          expect(insideAperture).toBe(false);
         }
       }
     });
