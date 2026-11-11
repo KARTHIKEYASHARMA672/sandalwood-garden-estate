@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
-  getStoneTileTextures,
-  getTimberTextures,
+  getStoneSlabTextures,
+  getFurnitureWoodTextures,
   getFabricTextures,
 } from '../../assets/procedural/TextureGenerator.js';
 import {
@@ -9,6 +9,7 @@ import {
   createLatheGeo,
   createGooseneckFaucet,
   createFoldedTowelStack,
+  createContactAoMesh,
 } from './RoomProps.js';
 import { gameStore } from '../../state/gameStore.js';
 
@@ -31,21 +32,26 @@ export class UtilityRoomBuilder {
   }
 
   createMaterials() {
-    const tile = getStoneTileTextures('laundry', 2, 2);
-    const walnut = getTimberTextures('walnut', 2, 2);
+    const slab = getStoneSlabTextures('limestone', 1, 1);
+    const walnut = getFurnitureWoodTextures('walnut', 2, 2);
     const towelCream = getFabricTextures('#F2ECE1', 2, 2);
     const towelOlive = getFabricTextures('#7E8C75', 2, 2);
 
     return {
       tileTop: new THREE.MeshStandardMaterial({
-        map: tile.map,
-        normalMap: tile.normalMap,
-        roughness: 0.42,
+        map: slab.map,
+        normalMap: slab.normalMap,
+        normalScale: new THREE.Vector2(0.42, 0.42),
+        roughnessMap: slab.roughnessMap,
+        roughness: 0.36,
+        metalness: 0.03,
       }),
       cabinetWood: new THREE.MeshStandardMaterial({
         map: walnut.map,
         normalMap: walnut.normalMap,
-        roughness: 0.58,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: walnut.roughnessMap,
+        roughness: 0.54,
       }),
       applianceWhite: new THREE.MeshStandardMaterial({
         color: 0xf4f4f2,
@@ -84,10 +90,12 @@ export class UtilityRoomBuilder {
       towelCream: new THREE.MeshStandardMaterial({
         map: towelCream.map,
         roughness: 0.92,
+        envMapIntensity: 0.2,
       }),
       towelOlive: new THREE.MeshStandardMaterial({
         map: towelOlive.map,
         roughness: 0.92,
+        envMapIntensity: 0.2,
       }),
     };
   }
@@ -179,19 +187,27 @@ export class UtilityRoomBuilder {
         unitGroup.add(soapDrawer);
       }
 
+      // Control panel fascia trim bezel separating dispenser drawer & cycle selector dial
+      const fasciaBand = new THREE.Mesh(
+        createChamferedBoxGeo(0.012, 0.11, unitW - 0.04, 0.004),
+        this.materials.drumMetal
+      );
+      fasciaBand.position.set(unitD * 0.5 + 0.002, 0.76, 0);
+      unitGroup.add(fasciaBand);
+
       const dial = new THREE.Mesh(
         new THREE.CylinderGeometry(0.032, 0.034, 0.024, 16),
         this.materials.chromeMetal
       );
       dial.rotation.z = Math.PI / 2;
-      dial.position.set(unitD * 0.5 + 0.012, 0.76, 0.08);
+      dial.position.set(unitD * 0.5 + 0.014, 0.76, 0.08);
       unitGroup.add(dial);
 
       const led = new THREE.Mesh(
         new THREE.SphereGeometry(0.009, 10, 8),
         new THREE.MeshBasicMaterial({ color: isActive ? ledColorOn : 0x444444 })
       );
-      led.position.set(unitD * 0.5 + 0.012, 0.76, -0.02);
+      led.position.set(unitD * 0.5 + 0.014, 0.76, -0.02);
       unitGroup.add(led);
 
       unitGroup.position.set(baseX, floorY, z);
@@ -339,6 +355,7 @@ export class UtilityRoomBuilder {
     linenPile.position.y = 0.45;
     linenPile.rotation.y = 0.25;
     basketG.add(basketBody, basketRim, linenPile);
+    basketG.add(createContactAoMesh(0.56, 0.56, 0.24));
     basketG.position.set(cntX, 0, -6.62);
     counterGroup.add(basketG);
 
