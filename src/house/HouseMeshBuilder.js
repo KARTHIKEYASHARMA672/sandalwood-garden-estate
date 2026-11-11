@@ -11,6 +11,8 @@ import {
 } from './HouseArchitecture.js';
 import {
   getTimberTextures,
+  getVerticalSlatsTextures,
+  getFurnitureWoodTextures,
   getStoneTileTextures,
   getFabricTextures,
   getPlasterTextures,
@@ -181,11 +183,11 @@ export class HouseMeshBuilder {
     });
 
     // 3. Vertical walnut/sandalwood slats for media feature walls
-    const slatsTex = getTimberTextures('slats', 3, 2);
+    const slatsTex = getVerticalSlatsTextures(1, 1);
     const slatsMaterial = new THREE.MeshStandardMaterial({
       map: slatsTex.map,
       normalMap: slatsTex.normalMap,
-      normalScale: new THREE.Vector2(0.95, 0.95),
+      normalScale: new THREE.Vector2(0.85, 0.85),
       roughnessMap: slatsTex.roughnessMap,
       roughness: 0.72,
       metalness: 0.04,
@@ -203,13 +205,13 @@ export class HouseMeshBuilder {
     });
 
     // 5. Room flooring materials
-    const foyerTex = getStoneTileTextures('foyer', 3, 3);
+    const foyerTex = getStoneTileTextures('foyer', 2, 2);
     const foyerFloorMat = new THREE.MeshStandardMaterial({
       map: foyerTex.map,
       normalMap: foyerTex.normalMap,
-      normalScale: new THREE.Vector2(0.75, 0.75),
+      normalScale: new THREE.Vector2(0.55, 0.55),
       roughnessMap: foyerTex.roughnessMap,
-      roughness: 0.78,
+      roughness: 0.70,
     });
 
     const oakTex = getTimberTextures('oak', 6, 6);
@@ -266,26 +268,26 @@ export class HouseMeshBuilder {
       roughness: 0.72,
     });
 
-    // 6. Architectural timber framing (posts, beams, frames, stairs, railings) with wood grain
-    const trimWalnutTex = getTimberTextures('walnut', 2, 2);
+    // 6. Architectural joinery & furniture-grade hardwood (continuous cathedral grain, zero brick plank joints)
+    const trimWalnutTex = getFurnitureWoodTextures('walnut', 1.4, 2.0);
     const timberDarkMat = new THREE.MeshStandardMaterial({
       map: trimWalnutTex.map,
       normalMap: trimWalnutTex.normalMap,
-      normalScale: new THREE.Vector2(0.65, 0.65),
+      normalScale: new THREE.Vector2(0.58, 0.58),
       roughnessMap: trimWalnutTex.roughnessMap,
-      color: 0xdccbb9,
-      roughness: 0.68,
+      color: 0xe6d6c5,
+      roughness: 0.62,
       metalness: 0.04,
     });
 
-    const trimHoneyTex = getTimberTextures('sandalwood', 2, 2);
+    const trimHoneyTex = getFurnitureWoodTextures('sandalwood', 1.4, 2.0);
     const timberHoneyMat = new THREE.MeshStandardMaterial({
       map: trimHoneyTex.map,
       normalMap: trimHoneyTex.normalMap,
-      normalScale: new THREE.Vector2(0.65, 0.65),
+      normalScale: new THREE.Vector2(0.55, 0.55),
       roughnessMap: trimHoneyTex.roughnessMap,
-      color: 0xeedcc5,
-      roughness: 0.62,
+      color: 0xf4e6d2,
+      roughness: 0.58,
       metalness: 0.04,
     });
 
@@ -348,12 +350,12 @@ export class HouseMeshBuilder {
       metalness: 0.04,
     });
 
-    const ceilPlasterTex = getPlasterTextures('#EAE0CD', 4, 4);
+    const ceilPlasterTex = getPlasterTextures('#F5EFE4', 4, 4);
     const ceilingDeckMat = new THREE.MeshStandardMaterial({
       map: ceilPlasterTex.map,
       normalMap: ceilPlasterTex.normalMap,
-      normalScale: new THREE.Vector2(0.35, 0.35),
-      roughness: 0.84,
+      normalScale: new THREE.Vector2(0.28, 0.28),
+      roughness: 0.86,
       metalness: 0.0,
     });
 
@@ -1451,41 +1453,31 @@ export class HouseMeshBuilder {
     mediaCore.receiveShadow = true;
     mediaGroup.add(mediaCore);
 
-    // Central honed stone backdrop behind 75" TV (+Z face)
-    const stoneBack = new THREE.Mesh(
-      new THREE.BoxGeometry(1.76, mwH - 0.12, 0.04),
-      this.materials.plinth
-    );
-    stoneBack.position.set(-3.0, mwY, 2.89);
-    stoneBack.castShadow = true;
-    stoneBack.receiveShadow = true;
-    mediaGroup.add(stoneBack);
+    // Full-span continuous vertical fluted sandalwood slats across both faces (+Z TV wall & -Z Gallery)
+    const frontSlatsGeo = new THREE.BoxGeometry(mwW - 0.04, mwH - 0.14, 0.036);
+    applyWorldBoxUVs(frontSlatsGeo, -3.0, mwY, 2.888, 0.42, 3.26);
+    const frontSlats = new THREE.Mesh(frontSlatsGeo, this.materials.slats);
+    frontSlats.position.set(-3.0, mwY, 2.888);
+    frontSlats.castShadow = true;
+    frontSlats.receiveShadow = true;
+    mediaGroup.add(frontSlats);
 
-    // Vertical fluted timber slat wings flanking the stone centrepiece
     for (const side of [-1, 1]) {
-      const slatFront = new THREE.Mesh(
-        new THREE.BoxGeometry(0.58, mwH - 0.12, 0.035),
-        this.materials.slats
-      );
-      slatFront.position.set(-3.0 + side * 1.19, mwY, 2.888);
-      slatFront.castShadow = true;
-      mediaGroup.add(slatFront);
-
       const brassInlay = new THREE.Mesh(
-        new THREE.BoxGeometry(0.025, mwH - 0.12, 0.044),
+        new THREE.BoxGeometry(0.018, mwH - 0.14, 0.042),
         this.materials.brass
       );
-      brassInlay.position.set(-3.0 + side * 0.89, mwY, 2.892);
+      brassInlay.position.set(-3.0 + side * (mwW * 0.5 - 0.025), mwY, 2.89);
       mediaGroup.add(brassInlay);
     }
 
-    // Rear gallery face of media wall clad in warm vertical sandalwood slats
-    const rearSlats = new THREE.Mesh(
-      new THREE.BoxGeometry(mwW - 0.08, mwH - 0.12, 0.03),
-      this.materials.slats
-    );
+    // Rear gallery face of media wall clad in matching continuous vertical sandalwood slats
+    const rearSlatsGeo = new THREE.BoxGeometry(mwW - 0.04, mwH - 0.14, 0.032);
+    applyWorldBoxUVs(rearSlatsGeo, -3.0, mwY, 2.715, 0.42, 3.26);
+    const rearSlats = new THREE.Mesh(rearSlatsGeo, this.materials.slats);
     rearSlats.position.set(-3.0, mwY, 2.715);
     rearSlats.castShadow = true;
+    rearSlats.receiveShadow = true;
     mediaGroup.add(rearSlats);
 
     // Baseboard & crown cap on feature pier
@@ -1712,10 +1704,18 @@ export class HouseMeshBuilder {
       const w = d.width;
       const h = d.height;
       const thick = d.thickness;
-      const frameD = 0.14;
-      const frameW = 0.06;
+      const isExterior =
+        d.category === 'exterior-main' ||
+        d.category === 'exterior-service' ||
+        d.category === 'exterior-sliding' ||
+        d.category === 'balcony';
+      const frameD = isExterior ? 0.258 : 0.158;
+      const frameW = 0.056;
+      const archW = 0.084;
+      const archThick = 0.022;
+      const plinthH = 0.13;
 
-      // 1. Timber door frame (jambs + header)
+      // 1. Full wall-depth timber jambs + projecting mitered architrave casings & plinth blocks
       const frameMat = this.materials.timberDark;
       const topFrame = new THREE.Mesh(new THREE.BoxGeometry(w + frameW * 2, frameW, frameD), frameMat);
       topFrame.position.set(0, h + frameW * 0.5, 0);
@@ -1729,9 +1729,56 @@ export class HouseMeshBuilder {
       rightJamb.position.set(w * 0.5 + frameW * 0.5, h * 0.5, 0);
       dSub.add(rightJamb);
 
-      // Low brass/bronze threshold sill
-      const thresh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.025, frameD), this.materials.brass);
-      thresh.position.set(0, 0.0125, 0);
+      const casingOffsetX = w * 0.5 + frameW * 0.45 + archW * 0.5;
+      const casingTopH = archW + (d.isMain ? 0.045 : 0.008);
+      const fullArchW = w + frameW * 0.9 + archW * 2;
+      for (const zSign of [-1, 1]) {
+        const zArch = zSign * (frameD * 0.5 + archThick * 0.42);
+        const zPlinth = zSign * (frameD * 0.5 + 0.013);
+
+        for (const sideX of [-1, 1]) {
+          const legX = sideX * casingOffsetX;
+          const plinthBlock = new THREE.Mesh(
+            new THREE.BoxGeometry(archW + 0.012, plinthH, 0.028),
+            frameMat
+          );
+          plinthBlock.position.set(legX, plinthH * 0.5, zPlinth);
+          plinthBlock.castShadow = true;
+          dSub.add(plinthBlock);
+
+          const legH = h + frameW - plinthH;
+          const archLeg = new THREE.Mesh(
+            new THREE.BoxGeometry(archW, legH, archThick),
+            frameMat
+          );
+          archLeg.position.set(legX, plinthH + legH * 0.5, zArch);
+          archLeg.castShadow = true;
+          dSub.add(archLeg);
+        }
+
+        const headerCasing = new THREE.Mesh(
+          new THREE.BoxGeometry(fullArchW, casingTopH, archThick + 0.004),
+          frameMat
+        );
+        headerCasing.position.set(0, h + frameW + casingTopH * 0.5 - 0.01, zArch + zSign * 0.002);
+        headerCasing.castShadow = true;
+        dSub.add(headerCasing);
+
+        if (d.isMain) {
+          const crownCap = new THREE.Mesh(
+            new THREE.BoxGeometry(fullArchW + 0.07, 0.036, 0.042),
+            frameMat
+          );
+          crownCap.position.set(0, h + frameW + casingTopH + 0.005, zSign * (frameD * 0.5 + 0.018));
+          crownCap.castShadow = true;
+          dSub.add(crownCap);
+        }
+      }
+
+      // Threshold sill: low stepped brass/bronze sill on exterior doors, flush transition saddle inside
+      const threshH = isExterior ? 0.025 : 0.005;
+      const thresh = new THREE.Mesh(new THREE.BoxGeometry(w, threshH, frameD), this.materials.brass);
+      thresh.position.set(0, threshH * 0.5, 0);
       dSub.add(thresh);
 
       // 2. Door Pivot Group
@@ -1857,6 +1904,26 @@ export class HouseMeshBuilder {
           corePanel.receiveShadow = true;
           doorSlab.add(corePanel);
 
+          // Chamfered architectural panel beads framing upper & lower recessed rails
+          const beadDepth = thick * 0.78;
+          const beadT = 0.018;
+          const addPanelBead = (pBot, pTop) => {
+            const pMid = (pBot + pTop) * 0.5;
+            const pH = pTop - pBot;
+            for (const bx of [-insetW * 0.5 + beadT * 0.5, insetW * 0.5 - beadT * 0.5]) {
+              const vBead = new THREE.Mesh(new THREE.BoxGeometry(beadT, pH, beadDepth), railMat);
+              vBead.position.set(centerOffsetX + bx, pMid, 0);
+              doorSlab.add(vBead);
+            }
+            for (const by of [pBot + beadT * 0.5, pTop - beadT * 0.5]) {
+              const hBead = new THREE.Mesh(new THREE.BoxGeometry(insetW - beadT * 2, beadT, beadDepth), railMat);
+              hBead.position.set(centerOffsetX, by, 0);
+              doorSlab.add(hBead);
+            }
+          };
+          addPanelBead(0.18, 0.89);
+          addPanelBead(1.03, h - 0.14);
+
           // Left & right full stiles
           for (const sx of [-w * 0.5 + stileW * 0.5, w * 0.5 - stileW * 0.5]) {
             const stile = new THREE.Mesh(
@@ -1940,6 +2007,17 @@ export class HouseMeshBuilder {
             side * (thick * 0.5 + 0.042)
           );
           doorSlab.add(lever);
+
+          // Deadbolt / privacy thumbturn escutcheon above latch handle
+          if (d.category !== 'interior' || d.id.includes('bedroom') || d.id.includes('bathroom')) {
+            const deadboltPlate = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.017, 0.017, 0.012, 12),
+              this.materials.brass
+            );
+            deadboltPlate.rotation.x = Math.PI / 2;
+            deadboltPlate.position.set(handleX, handleY + 0.105, zSurface);
+            doorSlab.add(deadboltPlate);
+          }
         }
 
         pivot.add(doorSlab);
@@ -2108,46 +2186,46 @@ export class HouseMeshBuilder {
       riserMesh.receiveShadow = true;
       stairGroup.add(riserMesh);
 
-      // Sleek tapered dark timber balusters + brass collars along BOTH open staircase edges
+      // Slender brushed-brass spindle balusters along BOTH open staircase edges
       const slopeRailY = s.bottomY + (i + 0.5) * stepHeight + 1.04;
       const balLen = Math.max(0.55, slopeRailY - stepY);
       for (const railX of [s.minX + 0.06, s.maxX - 0.06]) {
         const baluster = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.014, 0.018, balLen, 8),
-          this.materials.timberDark
+          new THREE.CylinderGeometry(0.011, 0.011, balLen, 8),
+          this.materials.brass
         );
         baluster.position.set(railX, stepY + balLen * 0.5, stepZ);
         baluster.castShadow = true;
         stairGroup.add(baluster);
 
         const collar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.02, 0.02, 0.025, 8),
-          this.materials.brass
+          new THREE.CylinderGeometry(0.018, 0.02, 0.024, 8),
+          this.materials.timberHoney
         );
-        collar.position.set(railX, stepY + 0.03, stepZ);
+        collar.position.set(railX, stepY + 0.024, stepZ);
         stairGroup.add(collar);
       }
     }
 
-    // 2. Refined under-tuck stringer carriages along left and right edges (clean slim architectural silhouette)
+    // 2. Warm honey oak under-tuck stringer carriages along left and right edges
     const stringerGeo = new THREE.BoxGeometry(0.055, 0.16, slopeHypot);
     for (const sx of [s.minX - 0.02, s.maxX + 0.02]) {
-      const stringer = new THREE.Mesh(stringerGeo, this.materials.timberDark);
+      const stringer = new THREE.Mesh(stringerGeo, this.materials.timberHoney);
       stringer.position.set(sx, midY - 0.12, midZ);
       stringer.rotation.x = stringerRotX;
       stringer.castShadow = true;
       stairGroup.add(stringer);
     }
 
-    // 3. Matching newel posts with pyramidal chamfered brass caps on BOTH left and right runs
-    const postGeo = new THREE.BoxGeometry(0.09, 1.12, 0.09);
-    const capGeo = new THREE.BoxGeometry(0.11, 0.04, 0.11);
+    // 3. Warm honey newel posts with pyramidal chamfered brass caps on BOTH left and right runs
+    const postGeo = new THREE.BoxGeometry(0.085, 1.12, 0.085);
+    const capGeo = new THREE.BoxGeometry(0.105, 0.036, 0.105);
     for (const railX of [s.minX + 0.06, s.maxX - 0.06]) {
       for (const [py, pz] of [
         [s.bottomY + 0.56, s.startZ],
         [s.topY + 0.56, s.endZ],
       ]) {
-        const post = new THREE.Mesh(postGeo, this.materials.timberDark);
+        const post = new THREE.Mesh(postGeo, this.materials.timberHoney);
         post.position.set(railX, py, pz);
         post.castShadow = true;
         stairGroup.add(post);
@@ -2190,19 +2268,22 @@ export class HouseMeshBuilder {
     const addXGuardrail = (startX, endX) => {
       const len = endX - startX;
       const cx = (startX + endX) * 0.5;
-      const topR = new THREE.Mesh(new THREE.BoxGeometry(len, 0.06, 0.06), this.materials.timberHoney);
-      topR.position.set(cx, railY + railH - 0.03, 1.7);
+      const topR = new THREE.Mesh(new THREE.BoxGeometry(len, 0.056, 0.062), this.materials.timberHoney);
+      topR.position.set(cx, railY + railH - 0.028, 1.7);
       topR.castShadow = true;
       mGroup.add(topR);
 
-      const botR = new THREE.Mesh(new THREE.BoxGeometry(len, 0.04, 0.04), this.materials.timberDark);
-      botR.position.set(cx, railY + 0.06, 1.7);
+      const botR = new THREE.Mesh(new THREE.BoxGeometry(len, 0.036, 0.042), this.materials.timberHoney);
+      botR.position.set(cx, railY + 0.045, 1.7);
       mGroup.add(botR);
 
-      const balCount = Math.floor(len / 0.15);
+      const balCount = Math.floor(len / 0.14);
       for (let i = 0; i <= balCount; i++) {
-        const bx = startX + i * 0.15;
-        const bMesh = new THREE.Mesh(new THREE.BoxGeometry(0.025, railH - 0.1, 0.025), this.materials.timberDark);
+        const bx = startX + i * 0.14;
+        const bMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.011, 0.011, railH - 0.09, 8),
+          this.materials.brass
+        );
         bMesh.position.set(bx, railY + railH * 0.5, 1.7);
         bMesh.castShadow = true;
         mGroup.add(bMesh);
@@ -2216,19 +2297,22 @@ export class HouseMeshBuilder {
     const len2 = 5.7 - 1.7; // 4.0 m
     const centerZ2 = (1.7 + 5.7) * 0.5;
 
-    const topRail2 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, len2), this.materials.timberHoney);
-    topRail2.position.set(0.65, railY + railH - 0.03, centerZ2);
+    const topRail2 = new THREE.Mesh(new THREE.BoxGeometry(0.062, 0.056, len2), this.materials.timberHoney);
+    topRail2.position.set(0.65, railY + railH - 0.028, centerZ2);
     topRail2.castShadow = true;
     mGroup.add(topRail2);
 
-    const botRail2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, len2), this.materials.timberDark);
-    botRail2.position.set(0.65, railY + 0.06, centerZ2);
+    const botRail2 = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.036, len2), this.materials.timberHoney);
+    botRail2.position.set(0.65, railY + 0.045, centerZ2);
     mGroup.add(botRail2);
 
-    const balCount2 = Math.floor(len2 / 0.15);
+    const balCount2 = Math.floor(len2 / 0.14);
     for (let i = 0; i <= balCount2; i++) {
-      const bz = 1.7 + i * 0.15;
-      const bMesh = new THREE.Mesh(new THREE.BoxGeometry(0.025, railH - 0.1, 0.025), this.materials.timberDark);
+      const bz = 1.7 + i * 0.14;
+      const bMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.011, 0.011, railH - 0.09, 8),
+        this.materials.brass
+      );
       bMesh.position.set(0.65, railY + railH * 0.5, bz);
       bMesh.castShadow = true;
       mGroup.add(bMesh);
@@ -2613,33 +2697,34 @@ export class HouseMeshBuilder {
     southSoffit.receiveShadow = true;
     rGroup.add(southSoffit);
 
-    // 3. Exposed structural rafters neatly INSIDE/UNDER the roof slopes (zero upper protrusion)
+    // 3. Exposed warm honey sandalwood structural rafters neatly INSIDE/UNDER the roof slopes
     const rafterCount = 10;
     const rafterMat = this.materials.timberDark;
+    const intRafterMat = this.materials.timberHoney;
     const rafterLen = slopeLen - 0.15;
     for (let i = 0; i < rafterCount; i++) {
       const rx = -11.6 + (i / (rafterCount - 1)) * 15.2;
 
-      const rNorth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, rafterLen), rafterMat);
+      const rNorth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, rafterLen), intRafterMat);
       rNorth.position.set(rx, midY - 0.15, -halfD * 0.5);
       rNorth.rotation.x = -pitch;
       rNorth.castShadow = true;
       rGroup.add(rNorth);
 
-      const rSouth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, rafterLen), rafterMat);
+      const rSouth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, rafterLen), intRafterMat);
       rSouth.position.set(rx, midY - 0.15, halfD * 0.5);
       rSouth.rotation.x = pitch;
       rSouth.castShadow = true;
       rGroup.add(rSouth);
     }
 
-    // 4. Exterior ridge cap + interior structural ridge beam
+    // 4. Exterior ridge cap + warm honey interior structural ridge beam
     const ridgeCap = new THREE.Mesh(new THREE.BoxGeometry(mainW + 0.08, 0.18, 0.28), rafterMat);
     ridgeCap.position.set(mainCenterX, ridgePeakY + 0.06, 0);
     ridgeCap.castShadow = true;
     rGroup.add(ridgeCap);
 
-    const ridgeBeam = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.26, 0.22), rafterMat);
+    const ridgeBeam = new THREE.Mesh(new THREE.BoxGeometry(16.0, 0.26, 0.22), intRafterMat);
     ridgeBeam.position.set(mainCenterX, ridgePeakY - 0.16, 0);
     ridgeBeam.castShadow = true;
     rGroup.add(ridgeBeam);
@@ -2897,34 +2982,69 @@ export class HouseMeshBuilder {
   }
 
   /**
-   * Builds warm 2700K architectural ceiling lights across main interior rooms
-   * so Sunset & Night views illuminate windows from within and keep rooms inviting.
+   * Builds warm 2700K architectural ceiling lights across main interior rooms:
+   * flat-slab spaces get flush ceiling downlights at Y = 3.68 m, while double-height
+   * and vaulted gable volumes drop brass-rod architectural pendants anchored cleanly
+   * to the sloped cedar soffit plane.
    */
   buildInteriorLights(houseGroup) {
     const lGroup = new THREE.Group();
     lGroup.name = 'interior-architectural-lights';
 
+    // Exact vaulted roof soffit underside geometry (matches buildRoof math)
+    const roofHalfD = (WORLD_DIMENSIONS.houseDepth + 1.5) * 0.5; // 9.75 m
+    const roofRise = WORLD_DIMENSIONS.roofRidgeHeight; // 2.40 m
+    const roofPitch = Math.atan2(roofRise, roofHalfD);
+    const soffitCenterRidgeY = WORLD_DIMENSIONS.upperCeilingY + roofRise - 0.05; // 9.40 m
+    const soffitUndersideY = (z) =>
+      soffitCenterRidgeY - 0.03 / Math.cos(roofPitch) - Math.abs(z) * (roofRise / roofHalfD);
+
     const fixtures = [
-      { id: 'living-hall', x: -3.2, y: 5.85, z: 5.6, intensity: 3.2, distance: 15.0 },
-      { id: 'living-front-bay', x: -3.5, y: 3.2, z: 7.4, intensity: 2.5, distance: 11.0 },
-      { id: 'foyer-stair', x: 2.6, y: 3.55, z: 6.4, intensity: 2.2, distance: 10.5 },
-      { id: 'kitchen-dining', x: -9.2, y: 3.55, z: 4.8, intensity: 2.2, distance: 11.5 },
-      { id: 'rear-gallery', x: -1.8, y: 3.55, z: -4.2, intensity: 2.4, distance: 12.5 },
-      { id: 'east-corridor', x: 6.0, y: 3.55, z: -1.5, intensity: 2.1, distance: 11.0 },
-      { id: 'bedroom-1', x: 9.4, y: 3.55, z: 6.4, intensity: 2.0, distance: 9.5 },
-      { id: 'bedroom-2', x: -9.3, y: 6.85, z: 2.3, intensity: 2.1, distance: 9.5 },
-      { id: 'upper-gallery', x: -1.8, y: 6.85, z: -3.5, intensity: 2.4, distance: 12.5 },
+      { id: 'living-hall', x: -2.85, y: 5.65, z: 5.6, intensity: 3.6, distance: 16.5, vaulted: true },
+      { id: 'foyer-stair', x: 5.35, y: 3.68, z: 7.1, intensity: 2.3, distance: 12.0, vaulted: false },
+      { id: 'kitchen-dining', x: -9.2, y: 3.68, z: 5.2, intensity: 2.3, distance: 12.0, vaulted: false },
+      { id: 'rear-gallery', x: -1.8, y: 3.68, z: -4.2, intensity: 2.4, distance: 12.5, vaulted: false },
+      { id: 'east-corridor', x: 6.0, y: 3.68, z: -1.5, intensity: 2.1, distance: 11.0, vaulted: false },
+      { id: 'bedroom-1', x: 9.4, y: 3.68, z: 6.4, intensity: 2.0, distance: 9.5, vaulted: false },
+      { id: 'bedroom-2', x: -9.05, y: 6.85, z: 2.3, intensity: 2.1, distance: 9.5, vaulted: true },
+      { id: 'upper-gallery', x: -2.3, y: 6.85, z: -3.5, intensity: 2.4, distance: 12.5, vaulted: true },
     ];
 
     for (const fx of fixtures) {
       const fSub = new THREE.Group();
+      fSub.name = `interior-light-${fx.id}`;
       fSub.position.set(fx.x, fx.y, fx.z);
 
-      const trim = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.14, 0.16, 0.04, 16),
-        this.materials.brass
-      );
-      fSub.add(trim);
+      if (fx.vaulted) {
+        const dropLen = Math.max(0.25, soffitUndersideY(fx.z) - fx.y);
+        const canopy = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.1, 0.12, 0.032, 16),
+          this.materials.brass
+        );
+        canopy.position.y = dropLen;
+        canopy.rotation.x = Math.sign(fx.z) * roofPitch;
+        fSub.add(canopy);
+
+        const stem = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.011, 0.011, dropLen, 10),
+          this.materials.brass
+        );
+        stem.position.y = dropLen * 0.5;
+        fSub.add(stem);
+
+        const shadeRing = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.24, 0.075, 18),
+          this.materials.brass
+        );
+        shadeRing.position.y = 0.02;
+        fSub.add(shadeRing);
+      } else {
+        const trim = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.16, 0.04, 16),
+          this.materials.brass
+        );
+        fSub.add(trim);
+      }
 
       const diffuserMat = new THREE.MeshStandardMaterial({
         color: 0xfff0d4,
@@ -2954,6 +3074,133 @@ export class HouseMeshBuilder {
     }
 
     houseGroup.add(lGroup);
+  }
+
+  /**
+   * Builds interior perimeter walnut skirting boards along exterior walls,
+   * plaster ceiling cove cornices, brass floor finish transition strips,
+   * and tactile brass wall dimmer switch plates beside key doorways.
+   */
+  buildArchitecturalTrim(houseGroup) {
+    const trimGroup = new THREE.Group();
+    trimGroup.name = 'architectural-interior-trim';
+
+    const gFloor = WORLD_DIMENSIONS.groundSlabTop;
+    const uFloor = WORLD_DIMENSIONS.upperFloorY;
+    const gCeil = gFloor + WORLD_DIMENSIONS.groundWallHeight; // 3.70
+    const uCeil = WORLD_DIMENSIONS.upperCeilingY; // 7.05
+    const skirtThick = 0.022;
+
+    const addSkirt = (isAlongX, fixedCoord, s0, s1, floorY) => {
+      const len = s1 - s0;
+      if (len <= 0.08) return;
+      const baseH = isAlongX ? 0.11 : 0.109;
+      const geo = isAlongX
+        ? new THREE.BoxGeometry(len, baseH, skirtThick)
+        : new THREE.BoxGeometry(skirtThick, baseH, len);
+      const m = new THREE.Mesh(geo, this.materials.timberDark);
+      const mid = (s0 + s1) * 0.5;
+      if (isAlongX) m.position.set(mid, floorY + baseH * 0.5, fixedCoord);
+      else m.position.set(fixedCoord, floorY + baseH * 0.5, mid);
+      m.receiveShadow = true;
+      trimGroup.add(m);
+    };
+
+    // 1. Continuous interior skirting boards on exterior wall inner faces (stopping cleanly at door plinths)
+    // Ground Front (inner face Z = 8.75 -> skirt Z = 8.739, interrupted by door-main-entrance at X = 3.5, w = 1.25)
+    addSkirt(true, 8.739, -11.73, 2.81, gFloor);
+    addSkirt(true, 8.739, 4.19, 11.73, gFloor);
+    // Ground Rear (Z = -8.739, interrupted by door-pool-sliding [-6.80..-4.20] & door-rear-service [5.60..6.50])
+    addSkirt(true, -8.739, -11.73, -6.89, gFloor);
+    addSkirt(true, -8.739, -4.11, 5.51, gFloor);
+    addSkirt(true, -8.739, 6.59, 11.73, gFloor);
+    // Ground West (X = -11.739) & East (X = 11.739)
+    addSkirt(false, -11.739, -8.73, 8.73, gFloor);
+    addSkirt(false, 11.739, -8.73, 8.73, gFloor);
+
+    // Upper Front (only West Wing slab X ∈ [-11.73, -6.62]; east of -6.6 is open double-height atrium)
+    addSkirt(true, 8.739, -11.73, -6.62, uFloor);
+    // Upper Rear (Z = -8.739, interrupted by door-balcony-1 [-3.75..-2.25])
+    addSkirt(true, -8.739, -11.73, -3.84, uFloor);
+    addSkirt(true, -8.739, -2.16, 3.93, uFloor);
+    // Upper West (X = -11.739, interrupted by door-balcony-2 [1.60..3.00])
+    addSkirt(false, -11.739, -8.73, 1.51, uFloor);
+    addSkirt(false, -11.739, 3.09, 8.73, uFloor);
+    // Upper East Clerestory (X = 3.939, strictly along upper slab [-8.73, 1.66])
+    addSkirt(false, 3.939, -8.73, 1.66, uFloor);
+
+    // 2. Warm architectural ceiling cove shadow moldings where flat ceilings meet outer walls
+    const addCornice = (isAlongX, fixedCoord, s0, s1, ceilY) => {
+      const len = s1 - s0;
+      if (len <= 0.1) return;
+      const coveH = isAlongX ? 0.062 : 0.061;
+      const coveD = 0.055;
+      const geo = isAlongX
+        ? new THREE.BoxGeometry(len, coveH, coveD)
+        : new THREE.BoxGeometry(coveD, coveH, len);
+      const m = new THREE.Mesh(geo, this.materials.ceilingDeck);
+      const mid = (s0 + s1) * 0.5;
+      if (isAlongX) m.position.set(mid, ceilY - coveH * 0.5, fixedCoord);
+      else m.position.set(fixedCoord, ceilY - coveH * 0.5, mid);
+      m.receiveShadow = true;
+      trimGroup.add(m);
+    };
+
+    // Ground flat ceiling zones (omits double-height Living Hall & Stair Hall)
+    addCornice(false, -11.72, -8.72, 8.72, gCeil);
+    addCornice(true, -8.72, -11.72, 11.72, gCeil);
+    addCornice(false, 11.72, -8.72, 8.72, gCeil);
+    addCornice(true, 8.72, -11.72, -7.08, gCeil);
+    addCornice(true, 8.72, 4.82, 11.72, gCeil);
+    // Upper flat ceiling zones
+    addCornice(true, -8.72, -11.72, 3.92, uCeil);
+    addCornice(false, -11.72, -8.72, 8.72, uCeil);
+    addCornice(false, 3.92, -8.72, 8.72, uCeil);
+
+    // 3. Brushed brass floor finish transition saddle strips
+    const addFloorStrip = (x, y, z, w, d) => {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(w, 0.004, d), this.materials.brass);
+      strip.position.set(x, y + 0.0035, z);
+      strip.receiveShadow = true;
+      trimGroup.add(strip);
+    };
+    // Entrance foyer honed stone perimeter transitions into ground oak + inner decorative brass inlay border
+    addFloorStrip(2.2, gFloor, 7.35, 0.044, 2.8);
+    addFloorStrip(4.8, gFloor, 7.35, 0.044, 2.8);
+    addFloorStrip(3.5, gFloor, 5.95, 2.6, 0.044);
+    addFloorStrip(2.38, gFloor, 7.35, 0.016, 2.44);
+    addFloorStrip(4.62, gFloor, 7.35, 0.016, 2.44);
+    addFloorStrip(3.5, gFloor, 6.13, 2.256, 0.016);
+    addFloorStrip(3.5, gFloor, 8.57, 2.256, 0.016);
+    // Kitchen limestone to Dining oak floor demarcation (Z = 4.48)
+    addFloorStrip(-9.41, gFloor, 4.48, 4.66, 0.044);
+
+    // 4. Tactile brushed-brass wall light switch plates (1.18 m above floor on verified wide piers)
+    const switchBronzeMat = this.materials.bronze;
+    const addWallSwitch = (x, floorY, z, rotY = 0) => {
+      const swGroup = new THREE.Group();
+      swGroup.position.set(x, floorY + 1.18, z);
+      swGroup.rotation.y = rotY;
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.132, 0.01), this.materials.brass);
+      swGroup.add(plate);
+      for (const rx of [-0.016, 0.016]) {
+        const rocker = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.046, 0.014), switchBronzeMat);
+        rocker.position.set(rx, 0, 0.004);
+        swGroup.add(rocker);
+      }
+      trimGroup.add(swGroup);
+    };
+
+    addWallSwitch(2.62, gFloor, 8.742, Math.PI); // Main Entrance Foyer interior
+    addWallSwitch(-6.92, gFloor, 4.78, Math.PI / 2); // Living-Kitchen archway pier
+    addWallSwitch(7.56, gFloor, 6.26, Math.PI / 2); // Bedroom 1 entry latch wall
+    addWallSwitch(9.58, gFloor, 4.76, 0); // Bathroom 1 outside entry
+    addWallSwitch(-3.92, gFloor, -8.742, 0); // Rear Pool Sliding Door switch
+    addWallSwitch(-7.26, uFloor, 1.78, -Math.PI / 2); // Bedroom 2 entry inside
+    addWallSwitch(-2.0, uFloor, -8.742, 0); // Upper Balcony door switch
+
+    consolidateStaticGroup(trimGroup);
+    houseGroup.add(trimGroup);
   }
 
   /**
@@ -3023,6 +3270,9 @@ export class HouseMeshBuilder {
 
     // 11. Warm 2700K architectural interior lighting fixtures
     this.buildInteriorLights(houseGroup);
+
+    // 12. Interior perimeter skirting, cove cornices, brass floor transitions & dimmer switches
+    this.buildArchitecturalTrim(houseGroup);
 
     // Attach metadata and helper collections to the house group
     houseGroup.userData = {
