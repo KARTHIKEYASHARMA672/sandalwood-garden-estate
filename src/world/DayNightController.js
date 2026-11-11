@@ -115,7 +115,7 @@ export function createDayNightController(scene, renderer) {
 
   scene.fog = new THREE.FogExp2('#DCE7EA', 0.0048);
 
-  const hemiLight = new THREE.HemisphereLight('#DCEBF7', '#73795D', 0.85);
+  const hemiLight = new THREE.HemisphereLight('#F4EFE6', '#CBBAA2', 0.85);
   scene.add(hemiLight);
 
   // Omnidirectional indirect interior/exterior bounce light so ceilings & recessed walls stay warm
@@ -270,8 +270,8 @@ export function createDayNightController(scene, renderer) {
       sunLight.position.set(28, 38, 24);
       sunLight.color.set(isRain ? '#DAE4EE' : '#FFF6E5');
       sunLight.intensity = isRain ? 0.98 : isCloudy ? 1.35 : 2.05;
-      hemiLight.color.set(isRain ? '#B2C3D4' : '#DCEBF7');
-      hemiLight.groundColor.set('#73795D');
+      hemiLight.color.set(isRain ? '#C8D2DC' : '#F4EFE6');
+      hemiLight.groundColor.set(isRain ? '#9B968D' : '#CBBAA2');
       hemiLight.intensity = isRain ? 0.72 : 0.88;
       ambientBounce.color.set(isRain ? '#DAE2EA' : '#FFF7EA');
       ambientBounce.intensity = isRain ? 0.28 : 0.38;
@@ -303,7 +303,7 @@ export function createDayNightController(scene, renderer) {
       sunLight.color.set('#FFA964');
       sunLight.intensity = isCloudy ? 1.1 : 1.7;
       hemiLight.color.set('#E9B39E');
-      hemiLight.groundColor.set('#4D453B');
+      hemiLight.groundColor.set('#6E5B49');
       hemiLight.intensity = 0.68;
       ambientBounce.color.set('#FFE6CC');
       ambientBounce.intensity = 0.24;

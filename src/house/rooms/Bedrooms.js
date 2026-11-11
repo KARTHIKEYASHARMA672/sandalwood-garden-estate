@@ -1,14 +1,23 @@
 import * as THREE from 'three';
 import {
-  getTimberTextures,
+  getFurnitureWoodTextures,
   getFabricTextures,
-  getArtworkTexture,
   getRugTextures,
+  getFoliageTexture,
+  getSoilTexture,
 } from '../../assets/procedural/TextureGenerator.js';
 import {
   createChamferedBoxGeo,
   createPlushPillowGeo,
-  createFoldedTowelStack,
+  createCuratedFramedArt,
+  createDrapedThrowGeo,
+  createSafeArtworkMaterial,
+  createContactAoMesh,
+  createFlutedPanel,
+  createDrapedDuvetGeo,
+  createCurvedChairBackGeo,
+  createPottedPlant,
+  createLatheGeo,
 } from './RoomProps.js';
 import { gameStore } from '../../state/gameStore.js';
 
@@ -23,48 +32,105 @@ export class BedroomsBuilder {
     this.colliders = [];
     this.interactables = [];
     this.seats = [];
+    this.interiorLights = [];
     this.materials = this.createMaterials();
   }
 
   createMaterials() {
-    const walnut = getTimberTextures('walnut', 2, 2);
-    const sandalwood = getTimberTextures('sandalwood', 2, 2);
+    const walnut = getFurnitureWoodTextures('walnut', 2, 2);
+    const sandalwood = getFurnitureWoodTextures('sandalwood', 2, 2);
     const bedLinenCream = getFabricTextures('#F2ECE1', 4, 4);
     const duvetTaupe = getFabricTextures('#B7A797', 3, 3);
     const duvetDustyRose = getFabricTextures('#C9828B', 3, 3);
+    const boucle = getFabricTextures('#EDE5D8', 3, 3);
+    const foliageTex = getFoliageTexture(3, 3);
+    const soilTex = getSoilTexture(2, 2);
 
     return {
       woodWalnut: new THREE.MeshStandardMaterial({
         map: walnut.map,
-        bumpMap: walnut.bumpMap,
-        bumpScale: 0.03,
-        roughness: 0.58,
+        normalMap: walnut.normalMap,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: walnut.roughnessMap,
+        roughness: 0.55,
         metalness: 0.04,
       }),
       woodSandalwood: new THREE.MeshStandardMaterial({
         map: sandalwood.map,
-        bumpMap: sandalwood.bumpMap,
-        bumpScale: 0.03,
-        roughness: 0.55,
+        normalMap: sandalwood.normalMap,
+        normalScale: new THREE.Vector2(0.52, 0.52),
+        roughnessMap: sandalwood.roughnessMap,
+        roughness: 0.52,
         metalness: 0.04,
       }),
       sheetCream: new THREE.MeshStandardMaterial({
         map: bedLinenCream.map,
-        bumpMap: bedLinenCream.bumpMap,
-        bumpScale: 0.02,
-        roughness: 0.92,
+        normalMap: bedLinenCream.normalMap,
+        normalScale: new THREE.Vector2(0.42, 0.42),
+        roughnessMap: bedLinenCream.roughnessMap,
+        roughness: 0.9,
+        envMapIntensity: 0.2,
       }),
       duvetMaster: new THREE.MeshStandardMaterial({
         map: duvetTaupe.map,
-        bumpMap: duvetTaupe.bumpMap,
-        bumpScale: 0.04,
-        roughness: 0.9,
+        normalMap: duvetTaupe.normalMap,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughnessMap: duvetTaupe.roughnessMap,
+        roughness: 0.88,
+        envMapIntensity: 0.2,
       }),
       duvetGuest: new THREE.MeshStandardMaterial({
         map: duvetDustyRose.map,
-        bumpMap: duvetDustyRose.bumpMap,
-        bumpScale: 0.04,
+        normalMap: duvetDustyRose.normalMap,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughnessMap: duvetDustyRose.roughnessMap,
+        roughness: 0.88,
+        envMapIntensity: 0.2,
+      }),
+      boucleCream: new THREE.MeshStandardMaterial({
+        map: boucle.map,
+        normalMap: boucle.normalMap,
+        normalScale: new THREE.Vector2(0.5, 0.5),
+        roughnessMap: boucle.roughnessMap,
         roughness: 0.9,
+        metalness: 0.0,
+        envMapIntensity: 0.2,
+      }),
+      foliage: new THREE.MeshStandardMaterial({
+        map: foliageTex.map,
+        normalMap: foliageTex.normalMap,
+        normalScale: new THREE.Vector2(0.6, 0.6),
+        roughnessMap: foliageTex.roughnessMap,
+        roughness: 0.72,
+      }),
+      soil: new THREE.MeshStandardMaterial({
+        map: soilTex,
+        roughness: 0.96,
+      }),
+      stemBark: new THREE.MeshStandardMaterial({
+        color: 0x5c4432,
+        roughness: 0.86,
+      }),
+      terracotta: new THREE.MeshStandardMaterial({
+        color: 0xb66949,
+        roughness: 0.8,
+      }),
+      matCream: new THREE.MeshStandardMaterial({
+        color: 0xf2ece0,
+        roughness: 0.9,
+      }),
+      darkBronze: new THREE.MeshStandardMaterial({
+        color: 0x322822,
+        roughness: 0.45,
+        metalness: 0.78,
+      }),
+      artGlass: new THREE.MeshPhysicalMaterial({
+        color: 0xffffff,
+        roughness: 0.08,
+        metalness: 0.02,
+        transparent: true,
+        opacity: 0.12,
+        depthWrite: false,
       }),
       pillowWhite: new THREE.MeshStandardMaterial({
         color: 0xfaf7f2,
@@ -82,9 +148,10 @@ export class BedroomsBuilder {
         metalness: 0.85,
       }),
       mirrorGlass: new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 0.05,
-        metalness: 0.95,
+        color: 0xe3dfd7,
+        roughness: 0.14,
+        metalness: 0.72,
+        envMapIntensity: 0.55,
       }),
       oliveAccent: new THREE.MeshStandardMaterial({
         color: 0x6f7b62,
@@ -113,6 +180,7 @@ export class BedroomsBuilder {
       colliders: this.colliders,
       interactables: this.interactables,
       seats: this.seats,
+      interiorLights: this.interiorLights,
     };
 
     return this.group;
@@ -154,6 +222,11 @@ export class BedroomsBuilder {
     rug1.receiveShadow = true;
     b1Group.add(rug1);
 
+    // Soft baked ambient-occlusion anchor beneath bed & nightstands
+    const bedAo = createContactAoMesh(bedW + 0.45, bedL + 0.45, 0.26);
+    bedAo.position.set(0, 0.003, 0);
+    b1Group.add(bedAo);
+
     // Tapered bed feet + beveled walnut platform frame
     const footGeo = new THREE.CylinderGeometry(0.026, 0.018, 0.1, 8);
     for (const fx of [-bedW * 0.5 + 0.08, bedW * 0.5 - 0.08]) {
@@ -181,21 +254,22 @@ export class BedroomsBuilder {
     matMesh.receiveShadow = true;
     b1Group.add(matMesh);
 
-    // Quilted chamfered duvet over lower two thirds + folded muted-olive throw blanket at foot
-    const duvetMesh = new THREE.Mesh(
-      createChamferedBoxGeo(bedW + 0.02, 0.055, (bedL - 0.08) * 0.65, 0.035),
-      this.materials.duvetMaster
-    );
-    duvetMesh.position.set(0, matH + 0.02, -bedL * 0.16);
+    // Organically draped quilted taupe linen duvet (rotated PI so foot overhang drapes over -Z foot)
+    const duvetGeo = createDrapedDuvetGeo(bedW, bedL * 0.68, 0.12, 0.06);
+    duvetGeo.rotateY(Math.PI);
+    const duvetMesh = new THREE.Mesh(duvetGeo, this.materials.duvetMaster);
+    duvetMesh.position.set(0, matH + 0.022, -bedL * 0.16);
     duvetMesh.castShadow = true;
+    duvetMesh.receiveShadow = true;
     b1Group.add(duvetMesh);
 
     const footThrow = new THREE.Mesh(
-      createChamferedBoxGeo(bedW + 0.04, 0.035, 0.42, 0.02),
+      createDrapedThrowGeo(bedW + 0.04, 0.2, 0.44),
       this.materials.oliveAccent
     );
-    footThrow.position.set(0, matH + 0.048, -bedL * 0.36);
+    footThrow.position.set(0, matH + 0.062, -bedL * 0.34);
     footThrow.castShadow = true;
+    footThrow.receiveShadow = true;
     b1Group.add(footThrow);
 
     // Upholstered walnut-framed headboard at North edge: Z = +bedL * 0.5 - 0.04
@@ -208,30 +282,40 @@ export class BedroomsBuilder {
     b1Group.add(hbFrame);
 
     const hbPad = new THREE.Mesh(
-      createChamferedBoxGeo(bedW - 0.04, hbH - 0.28, 0.05, 0.03),
-      this.materials.duvetMaster
+      createChamferedBoxGeo(bedW - 0.04, hbH - 0.28, 0.055, 0.03),
+      this.materials.boucleCream
     );
     hbPad.position.set(0, hbH * 0.5 + 0.1, bedL * 0.5 - 0.075);
+    hbPad.receiveShadow = true;
     b1Group.add(hbPad);
 
-    // 4 Plump pillows against headboard
+    // 4 Plump pillows against headboard + centered oatmeal bouclé lumbar bolster
     const pillowGeo = createPlushPillowGeo(0.56, 0.34, 0.14);
     for (const px of [-0.42, 0.42]) {
-      const p1 = new THREE.Mesh(pillowGeo, this.materials.pillowWhite);
-      p1.position.set(px, matH + 0.11, bedL * 0.5 - 0.24);
-      p1.rotation.x = 0.24;
+      const p1 = new THREE.Mesh(pillowGeo, this.materials.duvetMaster);
+      p1.position.set(px, matH + 0.12, bedL * 0.5 - 0.22);
+      p1.rotation.x = 0.22;
       p1.castShadow = true;
       b1Group.add(p1);
 
       const p2 = new THREE.Mesh(
-        createPlushPillowGeo(0.46, 0.28, 0.12),
-        this.materials.duvetMaster
+        createPlushPillowGeo(0.5, 0.3, 0.12),
+        this.materials.pillowWhite
       );
-      p2.position.set(px, matH + 0.09, bedL * 0.5 - 0.38);
-      p2.rotation.x = 0.34;
+      p2.position.set(px, matH + 0.095, bedL * 0.5 - 0.35);
+      p2.rotation.x = 0.32;
       p2.castShadow = true;
       b1Group.add(p2);
     }
+
+    const lumbarBolster = new THREE.Mesh(
+      createPlushPillowGeo(0.62, 0.24, 0.11),
+      this.materials.boucleCream
+    );
+    lumbarBolster.position.set(0, matH + 0.078, bedL * 0.5 - 0.49);
+    lumbarBolster.rotation.x = 0.28;
+    lumbarBolster.castShadow = true;
+    b1Group.add(lumbarBolster);
 
     // Upholstered foot-of-bed bench
     const bench = new THREE.Group();
@@ -261,10 +345,12 @@ export class BedroomsBuilder {
       heading: Math.PI,
     });
 
-    // 2. Dual Bedside Nightstands: 0.55m W x 0.45m D x 0.55m H with brass pulls
+    // 2. Dual Floating Fluted Bedside Nightstands: 0.55m W x 0.45m D x 0.23m H (top 0.55m)
     const nsW = 0.55;
     const nsD = 0.45;
     const nsH = 0.55;
+    const nsBodyH = 0.23;
+    const nsCenterY = nsH - nsBodyH * 0.5;
     const nsOffsetX = bedW * 0.5 + nsW * 0.5 + 0.08;
     const nsZ = bedL * 0.5 - nsD * 0.5;
 
@@ -273,23 +359,37 @@ export class BedroomsBuilder {
       [1, 'b1Right', 'Master Bed Lamp Right'],
     ]) {
       const ns = new THREE.Mesh(
-        createChamferedBoxGeo(nsW, nsH - 0.1, nsD, 0.02),
+        createChamferedBoxGeo(nsW, nsBodyH, nsD, 0.018),
         this.materials.woodWalnut
       );
-      ns.position.set(sign * nsOffsetX, 0.1 + (nsH - 0.1) * 0.5, nsZ);
+      ns.position.set(sign * nsOffsetX, nsCenterY, nsZ);
       ns.castShadow = true;
+      ns.receiveShadow = true;
       b1Group.add(ns);
 
-      for (const flx of [-0.2, 0.2]) {
-        for (const flz of [-0.16, 0.16]) {
-          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.011, 0.1, 8), this.materials.brassMetal);
-          leg.position.set(sign * nsOffsetX + flx, 0.05, nsZ + flz);
-          b1Group.add(leg);
-        }
-      }
-      const pull = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.018), this.materials.brassMetal);
-      pull.position.set(sign * nsOffsetX, nsH * 0.72, nsZ - nsD * 0.5 - 0.01);
+      const nsFlutes = createFlutedPanel(
+        nsW - 0.03,
+        nsBodyH - 0.04,
+        0.02,
+        16,
+        this.materials.woodWalnut,
+        this.materials.darkBronze
+      );
+      nsFlutes.rotation.y = Math.PI; // Flutes face -Z into Bedroom 1
+      nsFlutes.position.set(sign * nsOffsetX, nsCenterY, nsZ - nsD * 0.5 - 0.005);
+      b1Group.add(nsFlutes);
+
+      const pull = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.01, 0.018), this.materials.brassMetal);
+      pull.position.set(sign * nsOffsetX, 0.51, nsZ - nsD * 0.5 - 0.016);
       b1Group.add(pull);
+
+      const candleCup = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.028, 0.055, 14),
+        this.materials.matCream
+      );
+      candleCup.position.set(sign * (nsOffsetX - 0.14), nsH + 0.0275, nsZ - 0.1);
+      candleCup.castShadow = true;
+      b1Group.add(candleCup);
 
       const lamp = this.createBedsideLamp(key, label, {
         x: bedX + sign * nsOffsetX,
@@ -298,6 +398,31 @@ export class BedroomsBuilder {
       });
       lamp.position.set(sign * nsOffsetX, nsH, nsZ);
       b1Group.add(lamp);
+
+      // Brushed-brass cylindrical wall sconce flanking headboard artwork
+      const sconce = new THREE.Group();
+      const sMount = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.016, 16), this.materials.brassMetal);
+      sMount.rotation.x = Math.PI / 2;
+      sMount.position.z = 0.008;
+      const sArm = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.065), this.materials.brassMetal);
+      sArm.position.z = 0.04;
+      const sTube = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.2, 16), this.materials.brassMetal);
+      sTube.position.z = 0.082;
+      sTube.castShadow = true;
+      const sGlow = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.014, 14), this.materials.lampShade);
+      sGlow.position.set(0, 0.098, 0.082);
+      const sconceLight = new THREE.PointLight(0xffdca8, 0.55, 3.2, 1.8);
+      sconceLight.position.set(0, 0.08, 0.14);
+      sconce.add(sMount, sArm, sTube, sGlow, sconceLight);
+      sconce.rotation.y = Math.PI;
+      sconce.position.set(sign * 0.88, 1.48, bedL * 0.5 + 0.055);
+      b1Group.add(sconce);
+      this.interiorLights.push({
+        light: sconceLight,
+        baseIntensity: 0.55,
+        emissiveMat: this.materials.lampShade,
+        baseEmissive: 0.85,
+      });
     }
 
     // 3. Wardrobe cleanly along West wall North of door-bedroom-1 (Z=7.90, clear of door swing Z∈[5.15..6.05])
@@ -310,6 +435,8 @@ export class BedroomsBuilder {
     wBox.position.set(0, 1.075, 0);
     wBox.castShadow = true;
     ward.add(wBox);
+    const wardAo = createContactAoMesh(0.75, 1.5, 0.24);
+    ward.add(wardAo);
     for (const wz of [-0.3, 0.3]) {
       const h = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.34, 8), this.materials.brassMetal);
       h.position.set(0.305, 1.15, wz);
@@ -322,12 +449,14 @@ export class BedroomsBuilder {
     const dresser = new THREE.Group();
     dresser.name = 'bedroom-1-dresser';
     const dBox = new THREE.Mesh(
-      createChamferedBoxGeo(0.42, 0.76, 1.1, 0.02),
+      createChamferedBoxGeo(0.42, 0.76, 1.0, 0.02),
       this.materials.woodSandalwood
     );
     dBox.position.set(0, 0.38, 0);
     dBox.castShadow = true;
     dresser.add(dBox);
+    const dresserAo = createContactAoMesh(0.58, 1.15, 0.22);
+    dresser.add(dresserAo);
     const mirrorBack = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.018, 24), this.materials.woodWalnut);
     mirrorBack.rotation.z = Math.PI / 2;
     mirrorBack.scale.set(1.25, 1, 1);
@@ -343,36 +472,88 @@ export class BedroomsBuilder {
     ovalRing.scale.set(1, 1.25, 1);
     ovalRing.position.set(0.18, 1.32, 0);
     dresser.add(ovalRing);
-    dresser.position.set(-bedX + 11.48, 0, -bedZ + 5.36);
+    dresser.position.set(-bedX + 11.48, 0, -bedZ + 5.26);
     b1Group.add(dresser);
 
-    // 5. Framed botanical artwork canvas on North wall above headboard
-    let artTex;
-    try {
-      artTex = getArtworkTexture('botanical');
-    } catch {
-      const canvas = document.createElement('canvas');
-      canvas.width = 384;
-      canvas.height = 512;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#52794E';
-        ctx.fillRect(0, 0, 384, 512);
-      }
-      artTex = new THREE.CanvasTexture(canvas);
-      artTex.colorSpace = THREE.SRGBColorSpace;
-    }
-    const artMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.2, 0.85),
-      new THREE.MeshStandardMaterial({ map: artTex, roughness: 0.8 })
-    );
-    artMesh.rotation.y = Math.PI;
-    artMesh.position.set(0, 1.75, bedL * 0.5 + 0.04);
-    b1Group.add(artMesh);
+    // Terracotta-potted indoor Olive Tree beside East window (clear of dresser & bed)
+    const b1OliveTree = createPottedPlant({
+      potMat: this.materials.terracotta,
+      leafMat: this.materials.foliage,
+      stemMat: this.materials.stemBark,
+      soilMat: this.materials.soil,
+      potRadius: 0.21,
+      potHeight: 0.36,
+      leafCount: 14,
+      scale: 1.55,
+      flutedPot: false,
+    });
+    b1OliveTree.name = 'bedroom-1-olive-tree';
+    b1OliveTree.add(createContactAoMesh(0.7, 0.7, 0.26));
+    b1OliveTree.position.set(-bedX + 11.34, 0, -bedZ + 6.22);
+    b1Group.add(b1OliveTree);
 
-    const artFrame = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.91, 0.025), this.materials.brassMetal);
-    artFrame.position.set(0, 1.75, bedL * 0.5 + 0.055);
-    b1Group.add(artFrame);
+    // 5. Curved Walnut & Bouclé Reading Accent Chair in SW nook (clear of wardrobe & door swing)
+    const rChair = new THREE.Group();
+    rChair.name = 'bedroom-1-reading-chair';
+    const rcAo = createContactAoMesh(0.75, 0.75, 0.22);
+    const rcBase = new THREE.Mesh(createChamferedBoxGeo(0.62, 0.045, 0.62, 0.02), this.materials.woodWalnut);
+    rcBase.position.y = 0.23;
+    const rcSeat = new THREE.Mesh(createChamferedBoxGeo(0.58, 0.14, 0.58, 0.036), this.materials.boucleCream);
+    rcSeat.position.set(0, 0.33, -0.02);
+    rcSeat.castShadow = true;
+    const rcBackGeo = createCurvedChairBackGeo(0.31, 0.34, 0.08, Math.PI * 1.02);
+    rcBackGeo.rotateY(Math.PI); // Opens -Z cleanly into Bedroom 1
+    const rcBack = new THREE.Mesh(rcBackGeo, this.materials.boucleCream);
+    rcBack.position.set(0, 0.34, 0.02);
+    rcBack.castShadow = true;
+    rcBack.receiveShadow = true;
+    const rcPillow = new THREE.Mesh(createPlushPillowGeo(0.36, 0.22, 0.1), this.materials.oliveAccent);
+    rcPillow.position.set(0, 0.46, 0.14);
+    rcPillow.rotation.x = -0.22;
+    rChair.add(rcAo, rcBase, rcSeat, rcBack, rcPillow);
+    for (const ax of [-0.29, 0.29]) {
+      const arm = new THREE.Mesh(createChamferedBoxGeo(0.052, 0.042, 0.44, 0.014), this.materials.woodWalnut);
+      arm.position.set(ax, 0.5, -0.04);
+      rChair.add(arm);
+      for (const az of [-0.22, 0.22]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.012, 0.23, 8), this.materials.woodWalnut);
+        leg.position.set(ax * 0.88, 0.115, az);
+        rChair.add(leg);
+      }
+    }
+    const rChairWorldX = 8.05;
+    const rChairWorldZ = 6.72;
+    rChair.position.set(rChairWorldX - bedX, 0, rChairWorldZ - bedZ);
+    rChair.rotation.y = -Math.PI * 0.25; // Local front -Z -> faces SE (+X, -Z) into room
+    b1Group.add(rChair);
+    this.seats.push({
+      id: 'bedroom-1-reading-chair',
+      label: 'Bedroom 1 Reading Chair',
+      x: rChairWorldX,
+      y: floorY + 0.42,
+      z: rChairWorldZ,
+      heading: -Math.PI * 0.25,
+    });
+
+    // 6. Gallery Curated Framed Botanical Artwork on North wall above headboard
+    const b1Art = createCuratedFramedArt({
+      artMat: createSafeArtworkMaterial('botanical', '#52794E', 0.78),
+      width: 1.18,
+      height: 0.84,
+      frameMat: this.materials.woodWalnut,
+      matMat: this.materials.matCream,
+      brassMat: this.materials.brassMetal,
+      glassMat: this.materials.artGlass,
+      withPictureLight: true,
+      lightIntensity: 0.45,
+    });
+    b1Art.name = 'bedroom-1-wall-art';
+    b1Art.rotation.y = Math.PI; // Faces -Z cleanly into Master Bedroom 1
+    b1Art.position.set(0, 1.75, bedL * 0.5 + 0.055);
+    b1Group.add(b1Art);
+    if (b1Art.userData.pictureLight) {
+      this.interiorLights.push(b1Art.userData.pictureLight);
+    }
 
     b1Group.position.set(bedX, floorY, bedZ);
     this.group.add(b1Group);
@@ -427,6 +608,11 @@ export class BedroomsBuilder {
     rug2.receiveShadow = true;
     b2Group.add(rug2);
 
+    // Soft baked ambient-occlusion anchor beneath bed
+    const b2Ao = createContactAoMesh(bedL + 0.4, bedW + 0.4, 0.24);
+    b2Ao.position.set(0, 0.003, 0);
+    b2Group.add(b2Ao);
+
     // Chamfered sandalwood bed frame
     const frameMesh = new THREE.Mesh(
       createChamferedBoxGeo(bedL, 0.16, bedW, 0.03),
@@ -455,22 +641,23 @@ export class BedroomsBuilder {
     matMesh.receiveShadow = true;
     b2Group.add(matMesh);
 
-    // Dusty-rose quilted duvet + folded cream blanket at foot
-    const duvetMesh = new THREE.Mesh(
-      createChamferedBoxGeo(bedL * 0.65, 0.05, bedW + 0.02, 0.035),
-      this.materials.duvetGuest
-    );
-    duvetMesh.position.set(-bedL * 0.16, bedH + 0.018, 0);
+    // Dusty-rose draped quilted duvet (rotated -PI/2 so foot overhang drapes over -X West foot)
+    const duvet2Geo = createDrapedDuvetGeo(bedW, bedL * 0.68, 0.12, 0.055);
+    duvet2Geo.rotateY(-Math.PI / 2);
+    const duvetMesh = new THREE.Mesh(duvet2Geo, this.materials.duvetGuest);
+    duvetMesh.position.set(-bedL * 0.16, bedH + 0.02, 0);
     duvetMesh.castShadow = true;
+    duvetMesh.receiveShadow = true;
     b2Group.add(duvetMesh);
 
-    const b2Throw = createFoldedTowelStack(
-      [this.materials.sheetCream, this.materials.oliveAccent],
-      [0.36, 0.3],
-      [0.045, 0.03],
-      bedW - 0.1
+    const b2Throw = new THREE.Mesh(
+      createDrapedThrowGeo(bedW + 0.04, 0.2, 0.42),
+      this.materials.oliveAccent
     );
-    b2Throw.position.set(-bedL * 0.35, bedH + 0.035, 0);
+    b2Throw.rotation.y = Math.PI / 2;
+    b2Throw.position.set(-bedL * 0.34, bedH + 0.06, 0);
+    b2Throw.castShadow = true;
+    b2Throw.receiveShadow = true;
     b2Group.add(b2Throw);
 
     // Upholstered sandalwood headboard at East edge: X = +bedL * 0.5 - 0.04
@@ -482,7 +669,15 @@ export class BedroomsBuilder {
     hbMesh.castShadow = true;
     b2Group.add(hbMesh);
 
-    // 4 Plump pillows reclining back cleanly against East headboard (+X)
+    const hbPad2 = new THREE.Mesh(
+      createChamferedBoxGeo(0.05, 0.72, bedW - 0.06, 0.028),
+      this.materials.boucleCream
+    );
+    hbPad2.position.set(bedL * 0.5 - 0.075, 0.58, 0);
+    hbPad2.receiveShadow = true;
+    b2Group.add(hbPad2);
+
+    // 4 Plump pillows reclining back cleanly against East headboard (+X) + lumbar bolster
     const pGeo = createPlushPillowGeo(0.42, 0.3, 0.13);
     for (const pz of [-0.36, 0.36]) {
       const p1 = new THREE.Mesh(pGeo, this.materials.pillowWhite);
@@ -503,10 +698,23 @@ export class BedroomsBuilder {
       b2Group.add(p2);
     }
 
-    // 2. Dual Bedside Nightstands: 0.50m x 0.45m (Z = 1.88 South, Z = 3.96 North)
+    const lumbar2 = new THREE.Mesh(
+      createPlushPillowGeo(0.54, 0.22, 0.1),
+      this.materials.boucleCream
+    );
+    lumbar2.rotation.order = 'YXZ';
+    lumbar2.rotation.y = -Math.PI / 2;
+    lumbar2.rotation.x = -0.28;
+    lumbar2.position.set(bedL * 0.5 - 0.48, bedH + 0.072, 0);
+    lumbar2.castShadow = true;
+    b2Group.add(lumbar2);
+
+    // 2. Dual Floating Fluted Bedside Nightstands: 0.50m x 0.45m (top 0.50m)
     const nsW = 0.5;
     const nsD = 0.45;
     const nsH = 0.5;
+    const nsBodyH = 0.22;
+    const nsCenterY = nsH - nsBodyH * 0.5;
     const nsOffZ = bedW * 0.5 + nsW * 0.5 + 0.04;
     const nsX = bedL * 0.5 - nsD * 0.5;
 
@@ -515,12 +723,29 @@ export class BedroomsBuilder {
       [1, 'b2Right', 'Guest Bed Lamp Right'],
     ]) {
       const ns = new THREE.Mesh(
-        createChamferedBoxGeo(nsD, nsH, nsW, 0.02),
+        createChamferedBoxGeo(nsD, nsBodyH, nsW, 0.018),
         this.materials.woodSandalwood
       );
-      ns.position.set(nsX, nsH * 0.5, sign * nsOffZ);
+      ns.position.set(nsX, nsCenterY, sign * nsOffZ);
       ns.castShadow = true;
+      ns.receiveShadow = true;
       b2Group.add(ns);
+
+      const nsFlutes = createFlutedPanel(
+        nsW - 0.03,
+        nsBodyH - 0.04,
+        0.02,
+        14,
+        this.materials.woodSandalwood,
+        this.materials.woodWalnut
+      );
+      nsFlutes.rotation.y = -Math.PI / 2; // Flutes face -X West into Guest Bedroom 2
+      nsFlutes.position.set(nsX - nsD * 0.5 - 0.005, nsCenterY, sign * nsOffZ);
+      b2Group.add(nsFlutes);
+
+      const pull = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.01, 0.13), this.materials.brassMetal);
+      pull.position.set(nsX - nsD * 0.5 - 0.015, 0.465, sign * nsOffZ);
+      b2Group.add(pull);
 
       const lamp = this.createBedsideLamp(key, label, {
         x: bedX + nsX,
@@ -571,22 +796,22 @@ export class BedroomsBuilder {
     notebook.rotation.y = 0.22;
     deskGroup.add(notebook);
 
-    // Ergonomic desk chair (seat height 0.45m) facing West desk
+    // Ergonomic curved bouclé & oak desk chair (seat height 0.45m) facing West desk
     const chairGroup = new THREE.Group();
+    chairGroup.add(createContactAoMesh(0.58, 0.58, 0.22));
     const cSeat = new THREE.Mesh(
       createChamferedBoxGeo(0.44, 0.065, 0.44, 0.025),
-      this.materials.sheetCream
+      this.materials.boucleCream
     );
     cSeat.position.set(0, 0.45, 0);
     cSeat.castShadow = true;
     chairGroup.add(cSeat);
 
-    const cBack = new THREE.Mesh(
-      createChamferedBoxGeo(0.05, 0.38, 0.42, 0.02),
-      this.materials.woodSandalwood
-    );
-    cBack.position.set(0.2, 0.65, 0);
-    cBack.rotation.z = -0.08;
+    const cBackGeo = createCurvedChairBackGeo(0.25, 0.3, 0.06, Math.PI * 1.0);
+    cBackGeo.rotateY(-Math.PI / 2); // Opens -X West toward study desk
+    const cBack = new THREE.Mesh(cBackGeo, this.materials.woodSandalwood);
+    cBack.position.set(0.02, 0.46, 0);
+    cBack.castShadow = true;
     chairGroup.add(cBack);
 
     const cLegGeo = new THREE.CylinderGeometry(0.014, 0.011, 0.42, 8);
@@ -598,6 +823,7 @@ export class BedroomsBuilder {
       }
     }
 
+    deskGroup.add(createContactAoMesh(dD + 0.3, dW + 0.3, 0.22));
     chairGroup.position.set(0.54, 0, 0);
     deskGroup.add(chairGroup);
 
@@ -615,21 +841,43 @@ export class BedroomsBuilder {
       heading: Math.PI / 2,
     });
 
-    // Artwork above East headboard
-    let art2Tex;
-    try {
-      art2Tex = getArtworkTexture('abstract');
-    } catch {
-      art2Tex = null;
+    // Gallery curated artwork above East headboard + study wall botanical print (clear of door-balcony-2)
+    const b2Art = createCuratedFramedArt({
+      artMat: createSafeArtworkMaterial('abstract', '#B8755F', 0.78),
+      width: 0.96,
+      height: 0.74,
+      frameMat: this.materials.darkBronze,
+      matMat: this.materials.matCream,
+      brassMat: this.materials.brassMetal,
+      glassMat: this.materials.artGlass,
+      withPictureLight: true,
+      lightIntensity: 0.44,
+    });
+    b2Art.name = 'bedroom-2-wall-art';
+    b2Art.rotation.y = -Math.PI / 2;
+    b2Art.position.set(bedL * 0.5 + 0.032, 1.55, 0);
+    b2Group.add(b2Art);
+    if (b2Art.userData.pictureLight) {
+      this.interiorLights.push(b2Art.userData.pictureLight);
     }
-    if (art2Tex) {
-      const aMesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.95, 0.72),
-        new THREE.MeshStandardMaterial({ map: art2Tex, roughness: 0.78 })
-      );
-      aMesh.rotation.y = -Math.PI / 2;
-      aMesh.position.set(bedL * 0.5 + 0.02, 1.55, 0);
-      b2Group.add(aMesh);
+
+    const deskArt = createCuratedFramedArt({
+      artMat: createSafeArtworkMaterial('landscape', '#5F7762', 0.78),
+      width: 0.68,
+      height: 0.8,
+      frameMat: this.materials.woodWalnut,
+      matMat: this.materials.matCream,
+      brassMat: this.materials.brassMetal,
+      glassMat: this.materials.artGlass,
+      withPictureLight: true,
+      lightIntensity: 0.4,
+    });
+    deskArt.name = 'bedroom-2-study-art';
+    deskArt.rotation.y = Math.PI / 2;
+    deskArt.position.set(-11.735 - bedX, 1.56, deskWorldZ - bedZ);
+    b2Group.add(deskArt);
+    if (deskArt.userData.pictureLight) {
+      this.interiorLights.push(deskArt.userData.pictureLight);
     }
 
     b2Group.position.set(bedX, floorY, bedZ);
@@ -650,27 +898,39 @@ export class BedroomsBuilder {
   }
 
   /**
-   * Helper to create a toggleable bedside lamp.
+   * Helper to create a sculptural ceramic-base toggleable bedside lamp.
    */
   createBedsideLamp(lampKey, label, worldPos = { x: 0, y: 0, z: 0 }) {
     const lampGroup = new THREE.Group();
     lampGroup.name = `lamp-${lampKey}`;
 
-    const base = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.09, 0.02, 16),
+    const vaseGeo = createLatheGeo([
+      [0.055, 0],
+      [0.095, 0.055],
+      [0.092, 0.11],
+      [0.042, 0.155],
+      [0.036, 0.165],
+    ], 18);
+    const vaseBase = new THREE.Mesh(vaseGeo, this.materials.matCream);
+    vaseBase.castShadow = true;
+    vaseBase.receiveShadow = true;
+    lampGroup.add(vaseBase);
+
+    const collar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.022, 0.024, 12),
       this.materials.brassMetal
     );
-    base.position.set(0, 0.01, 0);
-    lampGroup.add(base);
+    collar.position.set(0, 0.175, 0);
+    lampGroup.add(collar);
 
     const stem = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.01, 0.01, 0.24, 8),
+      new THREE.CylinderGeometry(0.008, 0.008, 0.07, 8),
       this.materials.brassMetal
     );
-    stem.position.set(0, 0.13, 0);
+    stem.position.set(0, 0.215, 0);
     lampGroup.add(stem);
 
-    const shadeGeo = new THREE.CylinderGeometry(0.09, 0.14, 0.18, 16, 1, true);
+    const shadeGeo = new THREE.CylinderGeometry(0.095, 0.145, 0.175, 20, 1, true);
     const shadeMat = new THREE.MeshStandardMaterial({
       color: 0xfffaed,
       roughness: 0.8,
@@ -679,11 +939,11 @@ export class BedroomsBuilder {
       side: THREE.DoubleSide,
     });
     const shade = new THREE.Mesh(shadeGeo, shadeMat);
-    shade.position.set(0, 0.26, 0);
+    shade.position.set(0, 0.275, 0);
     lampGroup.add(shade);
 
     const pointLight = new THREE.PointLight(0xffecc4, 1.2, 3.5, 1.5);
-    pointLight.position.set(0, 0.26, 0);
+    pointLight.position.set(0, 0.27, 0);
     pointLight.visible = Boolean(gameStore.getState().bedsideLamps[lampKey]);
     lampGroup.add(pointLight);
 
