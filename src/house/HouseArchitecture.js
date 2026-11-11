@@ -101,8 +101,8 @@ export const ROOMS = [
     name: 'Kitchen',
     floor: 0,
     minX: -11.75,
-    maxX: -7.25,
-    minZ: 4.55,
+    maxX: -7.0,
+    minZ: 4.48,
     maxZ: 8.75,
     floorY: 0.3,
     ceilingY: 3.7,
@@ -444,8 +444,8 @@ export const DOORS = [
     height: 2.1,
     thickness: 0.045,
     rotY: Math.PI / 2,
-    openAngle: Math.PI * 0.5,
-    hingeSide: 'left',
+    openAngle: -Math.PI * 0.5,
+    hingeSide: 'right',
   },
   {
     id: 'door-bathroom-2',
@@ -474,7 +474,7 @@ export const DOORS = [
     height: 2.1,
     thickness: 0.045,
     rotY: 0,
-    openAngle: -Math.PI * 0.5,
+    openAngle: Math.PI * 0.5,
     hingeSide: 'right',
   },
   {
@@ -1102,7 +1102,7 @@ export function detectZoneAt(x, y, z) {
 
   // Interior ground rooms
   if (x >= -12.0 && x <= 12.0 && z >= -9.0 && z <= 9.0) {
-    if (x >= -11.9 && x <= -7.15 && z >= 4.45 && z <= 8.9) {
+    if (x >= -11.9 && x <= -7.05 && z >= 4.45 && z <= 8.9) {
       return { zoneId: 'kitchen', label: 'Kitchen' };
     }
     if (x >= -11.9 && x <= -6.65 && z >= 0.05 && z <= 4.5) {

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import {
-  getTimberTextures,
+  getFurnitureWoodTextures,
+  getPlasterTextures,
   getFabricTextures,
   getTvScreenTexture,
-  getArtworkTexture,
-  getStoneTileTextures,
+  getStoneSlabTextures,
   getRugTextures,
   getFoliageTexture,
   getSoilTexture,
@@ -14,6 +14,12 @@ import {
   createPlushPillowGeo,
   createLatheGeo,
   createPottedPlant,
+  createDrapedThrowGeo,
+  createCuratedFramedArt,
+  createSafeArtworkMaterial,
+  createContactAoMesh,
+  createFlutedPanel,
+  createCurvedChairBackGeo,
 } from './RoomProps.js';
 import { gameStore } from '../../state/gameStore.js';
 
@@ -21,15 +27,16 @@ import { gameStore } from '../../state/gameStore.js';
  * LivingHall: Furnishes the double-height Main Living Hall (PRD §9 & §10.1, Feature F20).
  *
  * Includes:
- * - Low modular sectional sofa (0.80m H, 0.42m seat H) with linen upholstery and accent cushions
+ * - Low modular sectional sofa (0.80m H, 0.42m seat H) with linen upholstery, piping & contoured throw
+ * - Front bay upholstered window banquette bench beneath win-front-left
  * - Sandalwood coffee table (1.30m L x 0.75m W, 0.40m H) with decorative tray and coasters
  * - Interactive TV remote (0.18m x 0.045m x 0.018m)
  * - 75-inch OLED 4K TV (1.68m W x 0.96m H) on feature wall with reactive screen canvas
  * - TV credenza console (2.40m W x 0.48m H x 0.42m D) with soundbar and ceramic flower vase
- * - Stone fireplace with sandalwood mantel, recessed firebox, and warm glowing embers
+ * - Full-height architectural stone & lime-plaster chimney breast hearth anchored flush to stair wall
  * - Sandalwood library showcase / bookshelf (1.80m W x 2.10m H x 0.42m D) with rows of books
- * - Woven wool area rug (3.2m x 2.4m)
- * - Framed landscape wall art canvas with bronze frame
+ * - Woven wool area rug (3.6m x 2.7m)
+ * - Matted landscape wall art canvas with walnut frame & warm gallery picture light
  */
 export class LivingHallBuilder {
   constructor(options = {}) {
@@ -39,67 +46,87 @@ export class LivingHallBuilder {
     this.colliders = [];
     this.interactables = [];
     this.seats = [];
+    this.interiorLights = [];
     this.materials = this.createMaterials();
   }
 
   createMaterials() {
-    const oak = getTimberTextures('oak', 2, 2);
-    const walnut = getTimberTextures('walnut', 2, 2);
-    const sandalwood = getTimberTextures('sandalwood', 2, 2);
-    const fabricLinen = getFabricTextures('#D2C4B4', 3, 3);
-    const stone = getStoneTileTextures('foyer', 2, 2);
+    const oak = getFurnitureWoodTextures('oak', 2, 2);
+    const walnut = getFurnitureWoodTextures('walnut', 2, 2);
+    const sandalwood = getFurnitureWoodTextures('sandalwood', 2, 2);
+    const fabricLinen = getFabricTextures('#EFE8DC', 3, 3);
+    const travertine = getStoneSlabTextures('travertine', 1, 1);
+    const limestone = getStoneSlabTextures('limestone', 1, 2);
+    const plaster = getPlasterTextures('#F2EAD9', 2, 3);
     const foliagePbr = getFoliageTexture(2, 2);
 
     return {
       sofaFabric: new THREE.MeshStandardMaterial({
         map: fabricLinen.map,
-        bumpMap: fabricLinen.bumpMap,
-        bumpScale: 0.04,
-        roughness: 0.88,
-        metalness: 0.02,
+        normalMap: fabricLinen.normalMap,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: fabricLinen.roughnessMap,
+        roughness: 0.92,
+        metalness: 0.0,
+        envMapIntensity: 0.2,
       }),
       cushionCream: new THREE.MeshStandardMaterial({
-        color: 0xf0e5d2,
-        roughness: 0.9,
+        color: 0xf4ede0,
+        roughness: 0.92,
+        envMapIntensity: 0.2,
       }),
       cushionOlive: new THREE.MeshStandardMaterial({
-        color: 0x68735a,
-        roughness: 0.9,
+        color: 0x5c694e,
+        roughness: 0.92,
+        envMapIntensity: 0.2,
       }),
       cushionRust: new THREE.MeshStandardMaterial({
         color: 0xb8755f,
         roughness: 0.9,
+        envMapIntensity: 0.2,
       }),
       woodSandalwood: new THREE.MeshStandardMaterial({
         map: sandalwood.map,
-        bumpMap: sandalwood.bumpMap,
-        bumpScale: 0.03,
-        roughness: 0.58,
+        normalMap: sandalwood.normalMap,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: sandalwood.roughnessMap,
+        roughness: 0.54,
         metalness: 0.04,
       }),
       woodWalnut: new THREE.MeshStandardMaterial({
         map: walnut.map,
-        bumpMap: walnut.bumpMap,
-        bumpScale: 0.03,
-        roughness: 0.6,
+        normalMap: walnut.normalMap,
+        normalScale: new THREE.Vector2(0.58, 0.58),
+        roughnessMap: walnut.roughnessMap,
+        roughness: 0.56,
         metalness: 0.04,
       }),
       woodOak: new THREE.MeshStandardMaterial({
         map: oak.map,
-        bumpMap: oak.bumpMap,
-        bumpScale: 0.03,
-        roughness: 0.55,
+        normalMap: oak.normalMap,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: oak.roughnessMap,
+        roughness: 0.52,
       }),
       tableStone: new THREE.MeshStandardMaterial({
-        map: stone.map,
-        bumpMap: stone.bumpMap,
-        bumpScale: 0.03,
-        roughness: 0.45,
+        map: travertine.map,
+        normalMap: travertine.normalMap,
+        normalScale: new THREE.Vector2(0.48, 0.48),
+        roughnessMap: travertine.roughnessMap,
+        roughness: 0.42,
+      }),
+      chimneyPlaster: new THREE.MeshStandardMaterial({
+        map: plaster.map,
+        normalMap: plaster.normalMap,
+        normalScale: new THREE.Vector2(0.45, 0.45),
+        roughnessMap: plaster.roughnessMap,
+        roughness: 0.9,
+        envMapIntensity: 0.22,
       }),
       brassMetal: new THREE.MeshStandardMaterial({
         color: 0xc8a265,
-        roughness: 0.35,
-        metalness: 0.85,
+        roughness: 0.32,
+        metalness: 0.86,
       }),
       darkMetal: new THREE.MeshStandardMaterial({
         color: 0x222224,
@@ -107,9 +134,9 @@ export class LivingHallBuilder {
         metalness: 0.8,
       }),
       ceramicWhite: new THREE.MeshStandardMaterial({
-        color: 0xeee7db,
-        roughness: 0.3,
-        metalness: 0.05,
+        color: 0xede5d7,
+        roughness: 0.42,
+        metalness: 0.02,
       }),
       showcaseGlass: new THREE.MeshPhysicalMaterial({
         color: 0xf4f7fa,
@@ -130,7 +157,7 @@ export class LivingHallBuilder {
         map: foliagePbr.map,
         normalMap: foliagePbr.normalMap,
         roughnessMap: foliagePbr.roughnessMap,
-        roughness: 0.62,
+        roughness: 0.66,
         metalness: 0.02,
       }),
       soil: new THREE.MeshStandardMaterial({
@@ -146,8 +173,12 @@ export class LivingHallBuilder {
         roughness: 0.95,
       }),
       hearthStone: new THREE.MeshStandardMaterial({
-        color: 0x8a8275,
-        roughness: 0.8,
+        map: limestone.map,
+        normalMap: limestone.normalMap,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: limestone.roughnessMap,
+        color: 0xe6ddd0,
+        roughness: 0.72,
       }),
     };
   }
@@ -157,6 +188,7 @@ export class LivingHallBuilder {
 
     this.buildAreaRug(floorY);
     this.buildSofaSet(floorY);
+    this.buildWindowBench(floorY);
     this.buildAccentChairAndLamp(floorY);
     this.buildCoffeeTable(floorY);
     this.buildTvAndConsole(floorY);
@@ -169,6 +201,7 @@ export class LivingHallBuilder {
       colliders: this.colliders,
       interactables: this.interactables,
       seats: this.seats,
+      interiorLights: this.interiorLights,
     };
 
     return this.group;
@@ -181,10 +214,11 @@ export class LivingHallBuilder {
     const rugMat = new THREE.MeshStandardMaterial({
       map: rugTex.map,
       normalMap: rugTex.normalMap,
-      normalScale: new THREE.Vector2(0.7, 0.7),
+      normalScale: new THREE.Vector2(0.5, 0.5),
       roughnessMap: rugTex.roughnessMap,
-      roughness: 0.94,
+      roughness: 0.95,
       metalness: 0.0,
+      envMapIntensity: 0.18,
     });
     const rug = new THREE.Mesh(rugGeo, rugMat);
     rug.position.set(-3.1, floorY + 0.004, 4.95);
@@ -221,16 +255,22 @@ export class LivingHallBuilder {
       }
     }
 
-    // 3 sculpted chamfered individual seat cushions (seat top strictly = 0.42m)
+    // 3 sculpted chamfered individual seat cushions (seat top strictly = 0.42m) + tailored piping seams
     const cushionSpan = sofaBaseW - 0.44;
     const seatSlotW = cushionSpan / 3 - 0.012;
     const seatGeo = createChamferedBoxGeo(seatSlotW, sofaSeatH - 0.16, sofaBaseD - 0.22, 0.045);
+    const pipingGeo = new THREE.BoxGeometry(seatSlotW - 0.06, 0.012, 0.014);
     for (let s = -1; s <= 1; s++) {
+      const cxSlot = s * (cushionSpan / 3);
       const cm = new THREE.Mesh(seatGeo, this.materials.sofaFabric);
-      cm.position.set(s * (cushionSpan / 3), 0.16 + (sofaSeatH - 0.16) * 0.5, -0.05);
+      cm.position.set(cxSlot, 0.16 + (sofaSeatH - 0.16) * 0.5, -0.05);
       cm.castShadow = true;
       cm.receiveShadow = true;
       sofaGroup.add(cm);
+
+      const welt = new THREE.Mesh(pipingGeo, this.materials.cushionCream);
+      welt.position.set(cxSlot, sofaSeatH - 0.01, -0.05 - (sofaBaseD - 0.22) * 0.5 + 0.01);
+      sofaGroup.add(welt);
     }
 
     // Backrest shell (0.80m top height) + 3 tufted back cushions
@@ -264,13 +304,14 @@ export class LivingHallBuilder {
     rightArm.castShadow = true;
     sofaGroup.add(rightArm);
 
-    // Draped olive throw blanket across right armrest
+    // Softly contoured draped olive throw blanket across right armrest
     const throwMesh = new THREE.Mesh(
-      createChamferedBoxGeo(0.23, 0.32, 0.44, 0.03),
+      createDrapedThrowGeo(0.22, 0.34, 0.48),
       this.materials.cushionOlive
     );
-    throwMesh.position.set(sofaBaseW * 0.5 - 0.105, 0.49, -0.05);
+    throwMesh.position.set(sofaBaseW * 0.5 - 0.105, 0.625, -0.04);
     throwMesh.castShadow = true;
+    throwMesh.receiveShadow = true;
     sofaGroup.add(throwMesh);
 
     // 5 pinched plush accent pillows (cream, olive, terracotta-rust)
@@ -292,7 +333,8 @@ export class LivingHallBuilder {
       sofaGroup.add(pm);
     }
 
-    // Position entire sofa at (-3.0, floorY, 5.8) facing north toward TV
+    // Contact shadow anchor + Position entire sofa at (-3.0, floorY, 5.8) facing north toward TV
+    sofaGroup.add(createContactAoMesh(sofaBaseW + 0.25, sofaBaseD + 0.2, 0.3));
     sofaGroup.position.set(-3.0, floorY, 5.8);
     this.group.add(sofaGroup);
 
@@ -315,23 +357,119 @@ export class LivingHallBuilder {
     });
   }
 
+  /**
+   * Furnishes the sunlit south bay beneath win-front-left (sill Y=1.05m) with a tailored
+   * walnut & bouclé banquette bench, open art-book shelf, bolster pillows & vase.
+   */
+  buildWindowBench(floorY) {
+    const benchGroup = new THREE.Group();
+    benchGroup.name = 'living-window-bench';
+
+    const bW = 2.24;
+    const bD = 0.54;
+    const frameTopH = 0.36;
+    const bx = -3.6;
+    const bz = 8.28;
+
+    const topFrame = new THREE.Mesh(
+      createChamferedBoxGeo(bW, 0.045, bD, 0.02),
+      this.materials.woodWalnut
+    );
+    topFrame.position.set(0, frameTopH - 0.022, 0);
+    topFrame.castShadow = true;
+    topFrame.receiveShadow = true;
+    benchGroup.add(topFrame);
+
+    const lowShelf = new THREE.Mesh(
+      createChamferedBoxGeo(bW - 0.24, 0.024, bD - 0.12, 0.015),
+      this.materials.woodSandalwood
+    );
+    lowShelf.position.set(0, 0.14, 0);
+    lowShelf.receiveShadow = true;
+    benchGroup.add(lowShelf);
+
+    const legGeo = new THREE.CylinderGeometry(0.022, 0.016, frameTopH - 0.04, 10);
+    for (const lx of [-bW * 0.5 + 0.1, 0, bW * 0.5 - 0.1]) {
+      for (const lz of [-bD * 0.5 + 0.07, bD * 0.5 - 0.07]) {
+        const leg = new THREE.Mesh(legGeo, this.materials.woodWalnut);
+        leg.position.set(lx, (frameTopH - 0.04) * 0.5, lz);
+        leg.castShadow = true;
+        benchGroup.add(leg);
+      }
+    }
+
+    // Boucle seat pad (total seat height 0.45m -> well below 1.05m window sill)
+    const seatPad = new THREE.Mesh(
+      createChamferedBoxGeo(bW - 0.06, 0.095, bD - 0.04, 0.035),
+      this.materials.cushionCream
+    );
+    seatPad.position.set(0, frameTopH + 0.045, 0);
+    seatPad.castShadow = true;
+    benchGroup.add(seatPad);
+
+    // Side bolsters & throw pillows tucked cleanly inside window piers
+    const pGeo = createPlushPillowGeo(0.38, 0.28, 0.12);
+    for (const [px, mat, rot] of [
+      [-bW * 0.5 + 0.24, this.materials.cushionOlive, -0.35],
+      [bW * 0.5 - 0.24, this.materials.cushionRust, 0.35],
+    ]) {
+      const p = new THREE.Mesh(pGeo, mat);
+      p.position.set(px, frameTopH + 0.18, 0.05);
+      p.rotation.y = rot;
+      p.rotation.x = 0.18;
+      p.castShadow = true;
+      benchGroup.add(p);
+    }
+
+    // Coffee-table art books stacked neatly on open lower shelf
+    for (const [sx, w, d, mat] of [
+      [-0.5, 0.28, 0.22, this.materials.cushionRust],
+      [-0.5, 0.24, 0.19, this.materials.sofaFabric],
+      [0.45, 0.26, 0.2, this.materials.cushionOlive],
+    ]) {
+      const bk = new THREE.Mesh(new THREE.BoxGeometry(w, 0.032, d), mat);
+      bk.position.set(sx, 0.168 + (mat === this.materials.sofaFabric ? 0.032 : 0), 0);
+      bk.castShadow = true;
+      benchGroup.add(bk);
+    }
+
+    benchGroup.position.set(bx, floorY, bz);
+    this.group.add(benchGroup);
+
+    this.seats.push({
+      id: 'living-window-bench',
+      label: 'Living Hall Window Bench',
+      x: bx,
+      y: floorY + 0.45,
+      z: bz,
+      heading: 0,
+    });
+
+    this.colliders.push({
+      id: 'collider-living-window-bench',
+      min: new THREE.Vector3(bx - bW * 0.5, floorY, bz - bD * 0.5),
+      max: new THREE.Vector3(bx + bW * 0.5, floorY + 0.55, bz + bD * 0.5),
+      type: 'furniture',
+    });
+  }
+
   buildAccentChairAndLamp(floorY) {
     const nook = new THREE.Group();
     nook.name = 'living-accent-chair-nook';
 
-    // Sculpted accent lounge chair angled toward coffee table & fireplace
+    // Sculpted Organic Modern accent lounge chair with curved olive bouclé barrel back & walnut frame
     const chair = new THREE.Group();
     chair.name = 'living-accent-chair';
     const baseFrame = new THREE.Mesh(
-      createChamferedBoxGeo(0.76, 0.06, 0.78, 0.025),
+      createChamferedBoxGeo(0.76, 0.055, 0.78, 0.03),
       this.materials.woodWalnut
     );
     baseFrame.position.y = 0.24;
     chair.add(baseFrame);
 
-    const legGeo = new THREE.CylinderGeometry(0.022, 0.014, 0.23, 8);
+    const legGeo = new THREE.CylinderGeometry(0.022, 0.015, 0.23, 10);
     for (const lx of [-0.3, 0.3]) {
-      for (const lz of [-0.31, 0.31]) {
+      for (const lz of [-0.3, 0.3]) {
         const leg = new THREE.Mesh(legGeo, this.materials.woodWalnut);
         leg.position.set(lx, 0.115, lz);
         leg.castShadow = true;
@@ -340,39 +478,44 @@ export class LivingHallBuilder {
     }
 
     const seatCush = new THREE.Mesh(
-      createChamferedBoxGeo(0.68, 0.16, 0.7, 0.04),
+      createChamferedBoxGeo(0.66, 0.16, 0.68, 0.055),
       this.materials.cushionOlive
     );
     seatCush.position.y = 0.35;
     seatCush.castShadow = true;
+    seatCush.receiveShadow = true;
     chair.add(seatCush);
 
-    const backCush = new THREE.Mesh(
-      createChamferedBoxGeo(0.68, 0.44, 0.15, 0.04),
+    const barrelBack = new THREE.Mesh(
+      createCurvedChairBackGeo(0.36, 0.42, 0.095, Math.PI * 0.94),
       this.materials.cushionOlive
     );
-    backCush.position.set(0, 0.62, -0.28);
-    backCush.rotation.x = -0.18;
-    backCush.castShadow = true;
-    chair.add(backCush);
+    barrelBack.position.set(0, 0.38, -0.02);
+    barrelBack.castShadow = true;
+    barrelBack.receiveShadow = true;
+    chair.add(barrelBack);
 
-    for (const ax of [-0.36, 0.36]) {
-      const arm = new THREE.Mesh(
-        createChamferedBoxGeo(0.08, 0.32, 0.72, 0.02),
+    for (const ax of [-0.35, 0.35]) {
+      const armSupport = new THREE.Mesh(
+        createChamferedBoxGeo(0.055, 0.048, 0.54, 0.018),
         this.materials.woodWalnut
       );
-      arm.position.set(ax, 0.42, 0);
-      arm.castShadow = true;
-      chair.add(arm);
+      armSupport.position.set(ax, 0.56, 0.02);
+      armSupport.rotation.x = 0.05;
+      armSupport.castShadow = true;
+      chair.add(armSupport);
     }
 
     const lumPillow = new THREE.Mesh(
-      createPlushPillowGeo(0.42, 0.26, 0.11),
+      createPlushPillowGeo(0.42, 0.27, 0.12),
       this.materials.cushionCream
     );
-    lumPillow.position.set(0, 0.5, -0.16);
+    lumPillow.position.set(0, 0.51, -0.15);
     lumPillow.rotation.x = -0.22;
+    lumPillow.castShadow = true;
     chair.add(lumPillow);
+
+    chair.add(createContactAoMesh(0.95, 0.95, 0.28));
 
     const cx = -4.98;
     const cz = 4.45;
@@ -409,24 +552,33 @@ export class LivingHallBuilder {
     const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.24, 0.3, 18, 1, true), this.materials.lampShade);
     shade.position.y = 1.6;
     lamp.add(shade);
-    const lampLight = new THREE.PointLight(0xffdfb0, 0.85, 6.0, 1.6);
+    const lampLight = new THREE.PointLight(0xffdfb0, 1.05, 7.0, 1.55);
     lampLight.position.set(0, 1.58, 0);
     lamp.add(lampLight);
     lamp.position.set(-5.35, floorY, 6.45);
     nook.add(lamp);
 
-    // Sculpted potted Fiddle-leaf Fig plant in South-West living corner
+    this.interiorLights.push({
+      light: lampLight,
+      baseIntensity: 1.05,
+      emissiveMat: this.materials.lampShade,
+      baseEmissive: 0.78,
+    });
+
+    // Mature branching Mediterranean Olive Tree in fluted travertine planter at South-West window bay
     const plant = createPottedPlant({
-      potMat: this.materials.ceramicWhite,
+      potMat: this.materials.tableStone,
       leafMat: this.materials.foliage,
       stemMat: this.materials.stemBark,
       soilMat: this.materials.soil,
-      potRadius: 0.22,
-      potHeight: 0.38,
-      leafCount: 14,
-      scale: 1.35,
+      potRadius: 0.24,
+      potHeight: 0.42,
+      leafCount: 18,
+      scale: 1.8,
+      flutedPot: true,
     });
     plant.name = 'potted-plant-living';
+    plant.add(createContactAoMesh(0.7, 0.7, 0.25));
     plant.position.set(-5.65, floorY, 7.85);
     nook.add(plant);
 
@@ -437,54 +589,40 @@ export class LivingHallBuilder {
     const tableGroup = new THREE.Group();
     tableGroup.name = 'living-coffee-table';
 
-    // Spec: 1.30m L x 0.75m W, 0.40m H
+    // Spec: 1.30m L x 0.75m W, 0.40m H — monolithic honed travertine plinth coffee table
     const tableL = 1.3;
     const tableW = 0.75;
     const tableH = 0.4;
-    const topThickness = 0.04;
+    const topThickness = 0.056;
 
-    // Beveled stone tabletop in honed limestone
-    const topGeo = createChamferedBoxGeo(tableL, topThickness, tableW, 0.05);
+    // Beveled slab tabletop in seamless honed travertine
+    const topGeo = createChamferedBoxGeo(tableL, topThickness, tableW, 0.08);
     const topMesh = new THREE.Mesh(topGeo, this.materials.tableStone);
     topMesh.position.set(0, tableH - topThickness * 0.5, 0);
     topMesh.castShadow = true;
     topMesh.receiveShadow = true;
     tableGroup.add(topMesh);
 
-    // Solid sandalwood apron frame & tapered brass-capped legs
-    const legGeo = new THREE.CylinderGeometry(0.032, 0.02, tableH - topThickness, 12);
-    const capGeo = new THREE.CylinderGeometry(0.021, 0.019, 0.04, 12);
-    const legOffsets = [
-      [-tableL * 0.5 + 0.09, -tableW * 0.5 + 0.09],
-      [tableL * 0.5 - 0.09, -tableW * 0.5 + 0.09],
-      [-tableL * 0.5 + 0.09, tableW * 0.5 - 0.09],
-      [tableL * 0.5 - 0.09, tableW * 0.5 - 0.09],
-    ];
-    for (const [lx, lz] of legOffsets) {
-      const legMesh = new THREE.Mesh(legGeo, this.materials.woodSandalwood);
-      legMesh.position.set(lx, (tableH - topThickness) * 0.5, lz);
-      legMesh.castShadow = true;
-      tableGroup.add(legMesh);
+    // Monolithic recessed fluted oval/rounded travertine plinth pedestal base
+    const pedH = tableH - topThickness;
+    const plinthBase = new THREE.Mesh(
+      createChamferedBoxGeo(0.7, pedH, 0.36, 0.1),
+      this.materials.tableStone
+    );
+    plinthBase.position.set(0, pedH * 0.5, 0);
+    plinthBase.castShadow = true;
+    plinthBase.receiveShadow = true;
+    tableGroup.add(plinthBase);
 
-      const cap = new THREE.Mesh(capGeo, this.materials.brassMetal);
-      cap.position.set(lx, 0.02, lz);
-      tableGroup.add(cap);
-    }
-
-    // Lower storage shelf
-    const shelfGeo = createChamferedBoxGeo(tableL - 0.2, 0.022, tableW - 0.2, 0.03);
-    const shelfMesh = new THREE.Mesh(shelfGeo, this.materials.woodSandalwood);
-    shelfMesh.position.set(0, 0.12, 0);
-    shelfMesh.castShadow = true;
-    tableGroup.add(shelfMesh);
+    tableGroup.add(createContactAoMesh(tableL + 0.15, tableW + 0.15, 0.3));
 
     // Decorative elements on table:
-    // 1. Chamfered walnut serving tray with two ceramic coasters & stoneware espresso cups
+    // 1. Hammered brushed-brass round tray with coasters & stoneware espresso cups
     const trayMesh = new THREE.Mesh(
-      createChamferedBoxGeo(0.38, 0.02, 0.26, 0.025),
-      this.materials.woodWalnut
+      new THREE.CylinderGeometry(0.19, 0.18, 0.016, 24),
+      this.materials.brassMetal
     );
-    trayMesh.position.set(-0.25, tableH + 0.01, 0.05);
+    trayMesh.position.set(-0.25, tableH + 0.008, 0.05);
     trayMesh.castShadow = true;
     tableGroup.add(trayMesh);
 
@@ -542,7 +680,7 @@ export class LivingHallBuilder {
     powerBtn.position.set(0, 0.019, -0.065);
     remoteGroup.add(powerBtn);
 
-    remoteGroup.position.set(-0.25, tableH + 0.02, 0.05);
+    remoteGroup.position.set(-0.25, tableH + 0.017, 0.05);
     remoteGroup.rotation.y = -0.2;
     tableGroup.add(remoteGroup);
 
@@ -579,44 +717,48 @@ export class LivingHallBuilder {
     const consoleGroup = new THREE.Group();
     consoleGroup.name = 'living-tv-and-console';
 
-    // 1. TV Console Credenza: 2.40m W x 0.48m H x 0.42m D
+    // 1. Floating Fluted Walnut TV Console Credenza: 2.40m W x 0.48m H x 0.42m D
     const conW = 2.4;
     const conH = 0.48;
     const conD = 0.42;
 
     const conBody = new THREE.Mesh(
-      createChamferedBoxGeo(conW, conH - 0.06, conD, 0.025),
-      this.materials.woodSandalwood
+      createChamferedBoxGeo(conW, conH - 0.12, conD, 0.022),
+      this.materials.woodWalnut
     );
-    conBody.position.set(0, 0.06 + (conH - 0.06) * 0.5, 0);
+    conBody.position.set(0, 0.12 + (conH - 0.12) * 0.5, 0);
     conBody.castShadow = true;
     conBody.receiveShadow = true;
     consoleGroup.add(conBody);
 
-    for (const lx of [-conW * 0.5 + 0.12, -0.4, 0.4, conW * 0.5 - 0.12]) {
-      for (const lz of [-conD * 0.5 + 0.06, conD * 0.5 - 0.06]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.013, 0.065, 8), this.materials.darkMetal);
-        leg.position.set(lx, 0.032, lz);
-        consoleGroup.add(leg);
-      }
-    }
+    // Recessed architectural shadow plinth + slim legs lifting credenza cleanly
+    const recessedBase = new THREE.Mesh(
+      new THREE.BoxGeometry(conW - 0.36, 0.12, conD - 0.12),
+      this.materials.darkMetal
+    );
+    recessedBase.position.set(0, 0.06, -0.02);
+    consoleGroup.add(recessedBase);
 
-    // Slatted console drawer faces & brushed brass hardware pulls
-    for (const px of [-0.78, 0.0, 0.78]) {
-      const doorRecess = new THREE.Mesh(
-        new THREE.BoxGeometry(0.72, conH - 0.14, 0.014),
-        this.materials.woodWalnut
-      );
-      doorRecess.position.set(px, 0.06 + (conH - 0.06) * 0.5, conD * 0.5 + 0.002);
-      consoleGroup.add(doorRecess);
-    }
-    const pullGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.12, 8);
+    // Full-span 3D vertical fluted walnut fascia doors & brushed brass pulls
+    const conFlutes = createFlutedPanel(
+      conW - 0.08,
+      conH - 0.16,
+      0.022,
+      34,
+      this.materials.woodWalnut,
+      this.materials.woodSandalwood
+    );
+    conFlutes.position.set(0, 0.12 + (conH - 0.12) * 0.5, conD * 0.5 + 0.004);
+    consoleGroup.add(conFlutes);
+
+    const pullGeo = new THREE.CylinderGeometry(0.007, 0.007, 0.12, 8);
     pullGeo.rotateZ(Math.PI / 2);
     for (const px of [-0.78, 0.0, 0.78]) {
       const pull = new THREE.Mesh(pullGeo, this.materials.brassMetal);
-      pull.position.set(px, conH * 0.65, conD * 0.5 + 0.018);
+      pull.position.set(px, conH * 0.68, conD * 0.5 + 0.02);
       consoleGroup.add(pull);
     }
+    consoleGroup.add(createContactAoMesh(conW + 0.12, conD + 0.15, 0.26));
 
     // Soundbar placed on top of console: 1.10m W x 0.06m H x 0.10m D
     const sbar = new THREE.Mesh(
@@ -745,33 +887,73 @@ export class LivingHallBuilder {
     const fireGroup = new THREE.Group();
     fireGroup.name = 'living-stone-fireplace';
 
-    // Fireplace dimensions: 1.80m W x 1.40m H x 0.45m D
+    // Anchored flush against part-ground-living-stair West face (X = 0.40) at Z = 4.65
+    // Leaves Z <= 5.55 cleanly clear of stair entrance corner (Z = 5.70)
     const fpW = 1.8;
-    const fpH = 1.4;
-    const fpD = 0.45;
+    const fpH = 1.38;
+    const fpD = 0.44;
+    const chimneyCenterX = 0.18; // flush back face at X = +0.40, front face at X = -0.04
+    const fpZ = 4.65;
 
-    // Stone hearth plinth on floor
-    const hearthGeo = new THREE.BoxGeometry(fpW + 0.3, 0.08, fpD + 0.3);
+    // Stone hearth plinth on floor projecting into living room
+    const hearthGeo = new THREE.BoxGeometry(fpW + 0.28, 0.09, fpD + 0.28);
     const hearthMesh = new THREE.Mesh(hearthGeo, this.materials.hearthStone);
-    hearthMesh.position.set(0, 0.04, 0);
+    hearthMesh.position.set(0, 0.045, 0.08);
     hearthMesh.castShadow = true;
     hearthMesh.receiveShadow = true;
     fireGroup.add(hearthMesh);
 
-    // Main carved stone surround
-    const surroundGeo = new THREE.BoxGeometry(fpW, fpH, fpD);
-    const surroundMesh = new THREE.Mesh(surroundGeo, this.materials.hearthStone);
-    surroundMesh.position.set(0, fpH * 0.5 + 0.08, 0);
-    surroundMesh.castShadow = true;
-    fireGroup.add(surroundMesh);
+    // Lower honed-stone surround framing a true recessed open firebox cavity (0.94m W x 0.70m H)
+    const cavityW = 0.94;
+    const cavityH = 0.7;
+    const jambW = (fpW - cavityW) * 0.5;
+    for (const jSign of [-1, 1]) {
+      const jamb = new THREE.Mesh(
+        new THREE.BoxGeometry(jambW, fpH, fpD),
+        this.materials.hearthStone
+      );
+      jamb.position.set(jSign * (cavityW * 0.5 + jambW * 0.5), fpH * 0.5 + 0.09, 0);
+      jamb.castShadow = true;
+      jamb.receiveShadow = true;
+      fireGroup.add(jamb);
+    }
 
-    // Recessed dark firebox cavity: 0.90m W x 0.70m H x 0.32m D
-    const fireboxGeo = new THREE.BoxGeometry(0.9, 0.7, 0.32);
-    const fireboxMesh = new THREE.Mesh(fireboxGeo, this.materials.fireBrick);
-    fireboxMesh.position.set(0, 0.08 + 0.35 + 0.1, 0.08);
-    fireGroup.add(fireboxMesh);
+    const lintelH = fpH - cavityH - 0.08;
+    const lintel = new THREE.Mesh(
+      new THREE.BoxGeometry(cavityW, lintelH, fpD),
+      this.materials.hearthStone
+    );
+    lintel.position.set(0, 0.09 + 0.08 + cavityH + lintelH * 0.5, 0);
+    lintel.castShadow = true;
+    lintel.receiveShadow = true;
+    fireGroup.add(lintel);
 
-    // Glowing timber embers and logs
+    const cavityFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(cavityW, 0.08, fpD),
+      this.materials.fireBrick
+    );
+    cavityFloor.position.set(0, 0.09 + 0.04, 0);
+    cavityFloor.receiveShadow = true;
+    fireGroup.add(cavityFloor);
+
+    // Recessed dark firebrick back wall & inner jamb cheeks opening forward to +fpD * 0.5
+    const backLiner = new THREE.Mesh(
+      new THREE.BoxGeometry(cavityW, cavityH, 0.06),
+      this.materials.fireBrick
+    );
+    backLiner.position.set(0, 0.09 + 0.08 + cavityH * 0.5, -fpD * 0.5 + 0.04);
+    fireGroup.add(backLiner);
+
+    for (const jSign of [-1, 1]) {
+      const cheek = new THREE.Mesh(
+        new THREE.BoxGeometry(0.03, cavityH, fpD - 0.06),
+        this.materials.fireBrick
+      );
+      cheek.position.set(jSign * (cavityW * 0.5 - 0.015), 0.09 + 0.08 + cavityH * 0.5, 0.02);
+      fireGroup.add(cheek);
+    }
+
+    // Glowing timber embers, wrought-iron grate, split logs & subtle amber flames inside open cavity
     const logMat = new THREE.MeshStandardMaterial({
       color: 0x3d2716,
       roughness: 0.9,
@@ -779,40 +961,95 @@ export class LivingHallBuilder {
     const emberMat = new THREE.MeshStandardMaterial({
       color: 0xeb5e1e,
       emissive: 0xff4800,
-      emissiveIntensity: 0.85,
+      emissiveIntensity: 0.9,
       roughness: 0.7,
     });
+    const grateMat = new THREE.MeshStandardMaterial({
+      color: 0x1e1d1c,
+      roughness: 0.48,
+      metalness: 0.75,
+    });
 
-    const emberBed = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.06, 0.22), emberMat);
-    emberBed.position.set(0, 0.18, 0.08);
+    const emberBed = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.055, 0.2), emberMat);
+    emberBed.position.set(0, 0.19, 0.03);
     fireGroup.add(emberBed);
 
-    const log1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.55, 8), logMat);
-    log1.rotation.z = Math.PI / 2;
-    log1.position.set(0, 0.24, 0.08);
+    for (let g = -2; g <= 2; g++) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.24, 6), grateMat);
+      bar.rotation.x = Math.PI / 2;
+      bar.position.set(g * 0.14, 0.215, 0.035);
+      fireGroup.add(bar);
+    }
+
+    const log1 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.56, 10), logMat);
+    log1.rotation.z = Math.PI / 2 + 0.05;
+    log1.position.set(-0.02, 0.26, 0.04);
     fireGroup.add(log1);
 
-    const log2 = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.45, 8), logMat);
-    log2.rotation.z = Math.PI / 2 - 0.2;
-    log2.position.set(0.05, 0.29, 0.05);
+    const log2 = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.48, 10), logMat);
+    log2.rotation.z = Math.PI / 2 - 0.18;
+    log2.rotation.y = 0.22;
+    log2.position.set(0.05, 0.305, 0.02);
     fireGroup.add(log2);
 
-    // Sandalwood mantel shelf on top
-    const mantelGeo = new THREE.BoxGeometry(fpW + 0.2, 0.08, fpD + 0.12);
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xffa83b,
+      transparent: true,
+      opacity: 0.78,
+    });
+    for (const [fx, fh, fr] of [[-0.12, 0.14, 0.032], [0.02, 0.19, 0.038], [0.16, 0.13, 0.028]]) {
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(fr, fh, 8), flameMat);
+      flame.position.set(fx, 0.28 + fh * 0.45, 0.035);
+      fireGroup.add(flame);
+    }
+
+    const hearthGlowLight = new THREE.PointLight(0xff9248, 1.05, 4.8, 1.6);
+    hearthGlowLight.position.set(0, 0.44, 0.28);
+    fireGroup.add(hearthGlowLight);
+
+    this.interiorLights.push({
+      light: hearthGlowLight,
+      baseIntensity: 1.05,
+      emissiveMat: emberMat,
+      baseEmissive: 1.05,
+    });
+
+    // Solid sandalwood floating beam mantel shelf
+    const mantelGeo = createChamferedBoxGeo(fpW + 0.16, 0.095, fpD + 0.14, 0.018);
     const mantelMesh = new THREE.Mesh(mantelGeo, this.materials.woodSandalwood);
-    mantelMesh.position.set(0, fpH + 0.08 + 0.04, 0.02);
+    mantelMesh.position.set(0, fpH + 0.09 + 0.045, 0.04);
     mantelMesh.castShadow = true;
+    mantelMesh.receiveShadow = true;
     fireGroup.add(mantelMesh);
 
-    // Place fireplace along east boundary partition near living hall center
-    fireGroup.position.set(-0.25, floorY, 5.2);
+    // Tapered monolithic lime-plaster upper chimney breast rising continuously to 6.10m atrium ceiling
+    const upperBreastH = 6.1 - (floorY + fpH + 0.18); // ~4.24m
+    const upperBreastD = 0.59; // local -Z connects back to X = +0.55 on stair hall side, front face at X = -0.04
+    const upperBreast = new THREE.Mesh(
+      new THREE.BoxGeometry(fpW - 0.08, upperBreastH, upperBreastD),
+      this.materials.chimneyPlaster
+    );
+    upperBreast.position.set(0, fpH + 0.18 + upperBreastH * 0.5, -0.075);
+    upperBreast.castShadow = true;
+    upperBreast.receiveShadow = true;
+    fireGroup.add(upperBreast);
+
+    // Decorative brass candle tapers & sculptural stone vessel on mantel
+    for (const [cx, cy] of [[-0.68, 0.22], [-0.56, 0.17]]) {
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.022, cy, 10), this.materials.brassMetal);
+      stick.position.set(cx, fpH + 0.18 + cy * 0.5, 0.06);
+      stick.castShadow = true;
+      fireGroup.add(stick);
+    }
+
+    fireGroup.position.set(chimneyCenterX, floorY, fpZ);
     fireGroup.rotation.y = -Math.PI / 2; // facing west toward sofa
     this.group.add(fireGroup);
 
     this.colliders.push({
       id: 'collider-living-fireplace',
-      min: new THREE.Vector3(-0.55, floorY, 5.2 - fpW * 0.5),
-      max: new THREE.Vector3(0.05, floorY + fpH, 5.2 + fpW * 0.5),
+      min: new THREE.Vector3(-0.2, floorY, fpZ - fpW * 0.5 - 0.1),
+      max: new THREE.Vector3(0.4, floorY + fpH + 0.4, fpZ + fpW * 0.5 + 0.1),
       type: 'furniture',
     });
   }
@@ -899,6 +1136,7 @@ export class LivingHallBuilder {
     }
 
     // Position bookshelf along western boundary of living hall
+    shelfGroup.add(createContactAoMesh(1.9, 0.55, 0.25));
     shelfGroup.position.set(-6.2, floorY, 5.0);
     shelfGroup.rotation.y = Math.PI / 2; // facing east
     this.group.add(shelfGroup);
@@ -912,48 +1150,29 @@ export class LivingHallBuilder {
   }
 
   buildWallArt(floorY) {
-    // Framed landscape canvas mounted cleanly above fireplace mantel (clear of OLED TV!)
-    const artGroup = new THREE.Group();
-    artGroup.name = 'living-wall-art';
+    // Matted & framed landscape artwork mounted flush onto overmantel chimney breast (X = -0.04 face)
+    const artMat = createSafeArtworkMaterial('landscape', '#5F7762', 0.68);
 
-    let artTex;
-    try {
-      artTex = getArtworkTexture('landscape');
-    } catch {
-      const canvas = document.createElement('canvas');
-      canvas.width = 384;
-      canvas.height = 512;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#5F7762';
-        ctx.fillRect(0, 0, 384, 512);
-      }
-      artTex = new THREE.CanvasTexture(canvas);
-      artTex.colorSpace = THREE.SRGBColorSpace;
-    }
-    const artGeo = new THREE.PlaneGeometry(1.36, 0.96);
-    const artMat = new THREE.MeshStandardMaterial({
-      map: artTex,
-      roughness: 0.7,
-      metalness: 0.0,
+    const artGroup = createCuratedFramedArt({
+      artMat,
+      width: 1.32,
+      height: 0.94,
+      frameMat: this.materials.woodWalnut,
+      matMat: this.materials.cushionCream,
+      brassMat: this.materials.brassMetal,
+      glassMat: this.materials.showcaseGlass,
+      withPictureLight: true,
+      lightIntensity: 0.55,
     });
-    const artMesh = new THREE.Mesh(artGeo, artMat);
-    artMesh.position.set(0, 0, 0.022);
-    artGroup.add(artMesh);
-
-    // Warm bronze frame & recessed off-white matboard
-    const matBoard = new THREE.Mesh(new THREE.BoxGeometry(1.42, 1.02, 0.025), this.materials.cushionCream);
-    matBoard.position.set(0, 0, 0.008);
-    artGroup.add(matBoard);
-
-    const frameGeo = new THREE.BoxGeometry(1.5, 1.1, 0.032);
-    const frameMesh = new THREE.Mesh(frameGeo, this.materials.brassMetal);
-    frameMesh.position.set(0, 0, 0);
-    artGroup.add(frameMesh);
-
-    artGroup.position.set(-0.22, floorY + 2.28, 5.2);
+    artGroup.name = 'living-wall-art';
+    // Chimney breast front face sits at X = -0.04; frame backing thickness 0.018 => center X = -0.049
+    artGroup.position.set(-0.049, floorY + 2.38, 4.65);
     artGroup.rotation.y = -Math.PI / 2;
     this.group.add(artGroup);
+
+    if (artGroup.userData.pictureLight) {
+      this.interiorLights.push(artGroup.userData.pictureLight);
+    }
   }
 }
 
